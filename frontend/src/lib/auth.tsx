@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ApiError, api, UNAUTHORIZED_EVENT } from './api'
 import type { Account } from './types'
 
@@ -24,17 +25,23 @@ async function fetchMe(): Promise<Account | null> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const q = useQuery({ queryKey: ['me'], queryFn: fetchMe, staleTime: Infinity, retry: false })
 
-  // Drop everything cached for the previous user (records, summaries, chat) on any account change.
+  // On any account change (sign in, sign out, expired session) drop everything cached for the previous user
+  // (records, summaries, chat) and start fresh on the home page with the account holder's own profile.
   const reset = useCallback(
     (account: Account | null) => {
       // Keep the ['me'] query itself: clearing it would detach the observer above from the new value.
       qc.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' })
       sessionStorage.clear()
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('hc.patient.'))
+        .forEach((k) => localStorage.removeItem(k))
+      navigate('/', { replace: true })
       qc.setQueryData(['me'], account)
     },
-    [qc],
+    [qc, navigate],
   )
 
   useEffect(() => {

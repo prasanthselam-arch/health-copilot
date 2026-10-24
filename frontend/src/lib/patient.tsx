@@ -23,7 +23,7 @@ export function PatientProvider({ children }: { children: ReactNode }) {
   const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(KEY))
   const q = useQuery({ queryKey: ['patients'], queryFn: api.patients })
   const patients = useMemo(() => q.data ?? [], [q.data])
-  const patient = patients.find((p) => p.id === selected) ?? patients[0] ?? null
+  const patient = patients.find((p) => p.id === selected) ?? patients.find((p) => p.relationship === 'self') ?? patients[0] ?? null
 
   const select = useCallback(
     (id: string) => {
