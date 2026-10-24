@@ -211,6 +211,7 @@ function canRecord() {
 
 interface Recording {
   spoke: () => boolean
+  stats: () => Record<string, unknown>
   /** Stops and returns the audio, or null when nobody spoke. */
   finish: () => Promise<Blob | null>
   cancel: () => void
@@ -236,6 +237,11 @@ async function record(onLevel: (level: number) => void, onTurnEnd: () => void): 
   let voiced = 0
   let floor = 0.004
   let ended = false
+  let peak = 0
+  let frames = 0
+  // Some browsers start the meter paused (for example right after the permission prompt) and it then reads pure
+  // silence; real microphones never give exactly zero. The recording itself still works, so it is kept.
+  let dead = false
   let quietSince = performance.now()
   const started = performance.now()
   const timer = setInterval(() => {
@@ -245,7 +251,18 @@ async function record(onLevel: (level: number) => void, onTurnEnd: () => void): 
     const rms = Math.sqrt(sum / buf.length)
     onLevel(Math.min(1, rms * 8))
     const now = performance.now()
-    const threshold = Math.min(0.05, Math.max(0.008, floor * 2.5))
+    frames++
+    peak = Math.max(peak, rms)
+    if (ctx.state === 'suspended') void ctx.resume().catch(() => undefined)
+    if (!dead && peak === 0 && now - started > 1200) dead = true
+    if (dead) {
+      if (!ended && now - started > 7000) {
+        ended = true
+        onTurnEnd()
+      }
+      return
+    }
+    const threshold = Math.min(0.05, Math.max(0.004, floor * 2.5))
     if (rms > threshold) {
       voiced++
       quietSince = now
@@ -268,10 +285,13 @@ async function record(onLevel: (level: number) => void, onTurnEnd: () => void): 
     stream.getTracks().forEach((t) => t.stop())
     void ctx.close()
   }
-  const blob = () => (spoke && parts.length ? new Blob(parts, { type: rec.mimeType || 'audio/webm' }) : null)
+  // Faint sound that never crossed the speech threshold is still sent: the server can tell speech from silence.
+  const heardSomething = () => spoke || dead || peak > 0.004
+  const blob = () => (heardSomething() && parts.length ? new Blob(parts, { type: rec.mimeType || 'audio/webm' }) : null)
   rec.start()
   return {
     spoke: () => spoke,
+    stats: () => ({ spoke, dead, peak: Math.round(peak * 1000) / 1000, floor: Math.round(floor * 1000) / 1000, frames, ctx: ctx.state, mime: rec.mimeType }),
     finish: () =>
       new Promise((resolve) => {
         if (rec.state === 'inactive') {
@@ -288,6 +308,15 @@ async function record(onLevel: (level: number) => void, onTurnEnd: () => void): 
       close()
     },
   }
+}
+
+function report(events: unknown[], info: Record<string, unknown>) {
+  void fetch('/api/voice/diag', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ events, info: { ...info, ua: navigator.userAgent } }),
+    keepalive: true,
+  }).catch(() => undefined)
 }
 
 async function transcribe(audio: Blob, lang: string): Promise<string> {
@@ -332,6 +361,10 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
       let endTimer: ReturnType<typeof setTimeout> | undefined
       let silence: ReturnType<typeof setTimeout> | undefined
       let grace: ReturnType<typeof setTimeout> | undefined
+      const t0 = performance.now()
+      const events: unknown[] = []
+      const note = (e: string) => events.length < 40 && events.push(`${Math.round(performance.now() - t0)} ${e}`)
+      const reportOutcome = (outcome: string) => report(events, { outcome, native, lang, recording: recording?.stats() ?? null })
 
       const cleanup = () => {
         done = true
@@ -351,21 +384,25 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
         if (done) return
         cleanup()
         if (heard.trim()) {
+          reportOutcome('recogniser')
           recording?.cancel()
           setStatus('idle')
           return cbs.current.onFinal(heard.trim())
         }
         const audio = recording ? await recording.finish() : null
         if (!audio) {
+          reportOutcome('nothing heard')
           setStatus('idle')
           return setError('no_speech')
         }
         setStatus('transcribing')
         try {
           const text = await transcribe(audio, lang)
+          reportOutcome(text ? 'server transcript' : 'server heard no words')
           if (text) cbs.current.onFinal(text)
           else setError('no_speech')
-        } catch {
+        } catch (e) {
+          reportOutcome(`server error ${String(e)}`)
           setError('voice_error')
         } finally {
           setStatus('idle')
@@ -381,9 +418,16 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
 
       if (withRecording) {
         try {
-          recording = await record(setLevel, onTurnEnd)
-        } catch {
-          if (!native) return setError('mic_denied')
+          recording = await record(setLevel, () => {
+            note('recording: turn ended')
+            onTurnEnd()
+          })
+        } catch (e) {
+          note(`recording failed: ${String(e)}`)
+          if (!native) {
+            reportOutcome('microphone refused')
+            return setError('mic_denied')
+          }
         }
       }
       cancelRef.current = () => {
@@ -409,6 +453,7 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
         rec.maxAlternatives = 1
         if (!recording) silence = setTimeout(() => !heard && rec?.stop(), 8000)
         rec.onresult = (e) => {
+          if (!heard) note('recogniser: first words')
           let fin = ''
           let interim = ''
           for (let i = 0; i < e.results.length; i++) {
@@ -427,6 +472,7 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
           }, interim ? 1600 : 900)
         }
         rec.onerror = (e) => {
+          note(`recogniser error: ${e.error}`)
           if (done) return
           if (e.error === 'aborted') return
           if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
@@ -435,6 +481,7 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
               return
             }
             cleanup()
+            reportOutcome('recogniser refused')
             setStatus('idle')
             return setError('mic_denied')
           }
@@ -444,9 +491,11 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
           cleanup()
           setStatus('idle')
           if (e.error === 'network' || e.error === 'language-not-supported') return void run(false)
+          reportOutcome(`recogniser failed: ${e.error}`)
           setError(e.error === 'no-speech' ? 'no_speech' : 'voice_error')
         }
         rec.onend = () => {
+          note('recogniser ended')
           if (done) return
           nativeOver = true
           if (heard || !recording) void finish()
