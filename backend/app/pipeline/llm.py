@@ -58,7 +58,7 @@ _cooling: dict[str, float] = {}
 _last_ok: dict[str, str] = {}
 OVERLOAD_COOLDOWN_S = 45
 INTERACTIVE_TIMEOUT_MS = 20_000
-HEDGE_AFTER_S = 6
+HEDGE_AFTER_S = 5
 
 
 def _cooldown_s(msg: str) -> float:

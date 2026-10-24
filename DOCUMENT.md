@@ -90,7 +90,7 @@ extend Health Copilot.
   - spoken questions get a short spoken-style answer (1-3 sentences, no tables) with minimal model thinking, and the
     answer is read aloud automatically;
   - chat, voice and translation calls never wait on a struggling model: each model gets one try, a slow one is raced
-    by the next after 6 seconds, the first answer wins, and overloaded models are skipped for a while;
+    by the next after 5 seconds, the first answer wins, and overloaded models are skipped for a while;
   - server read-aloud starts with the first sentence while the rest is generated;
   - if every model is busy or out of quota, "which medicines tonight / this morning / today?" is still answered
     instantly from the reminder schedule, in any of the 13 languages.

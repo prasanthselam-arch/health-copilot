@@ -26,6 +26,12 @@ class ChatAnswer(BaseModel):
     emergency_symptoms: bool = Field(default=False, description="True if the user describes emergency symptoms, in any language")
 
 
+class VoiceAnswer(ChatAnswer):
+    answer: str = Field(description="The spoken reply: 1-3 short plain sentences (under 60 words), no Markdown, bullets "
+                                    "or tables, in the language of the user's question")
+    follow_up_questions: list[str] = Field(default_factory=list, description="Up to 2 very short follow-up questions, in the reply language")
+
+
 CHAT_SYSTEM = """You are a careful personal health copilot. You answer questions about the user's OWN health records.
 RECORDS (JSON) are provided; every record has an `id`.
 Rules:
@@ -137,8 +143,8 @@ def ask(db: Session, patient: Patient, message: str, history: list[dict[str, str
     prompt = f"RECORDS:\n{data}\n\nCONVERSATION SO FAR:\n{convo}\n\nUSER QUESTION: {message}"
     system = CHAT_SYSTEM.format(language=LANGUAGES.get(lang, "English")) + (VOICE_RULES if voice else "")
     try:
-        r: ChatAnswer = llm.parse("fast", system, prompt, ChatAnswer, thinking="minimal" if voice else None,
-                                 interactive=True).parsed
+        r: ChatAnswer = llm.parse("fast", system, prompt, VoiceAnswer if voice else ChatAnswer,
+                                 thinking="minimal" if voice else None, interactive=True).parsed
     except Exception:
         fallback = _quick_answer(db, patient, message, lang)
         if fallback is None:
