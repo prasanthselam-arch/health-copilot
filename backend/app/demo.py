@@ -86,7 +86,9 @@ def _birth(years: int, today: date) -> date:
 
 
 def _profile(db: Session, acc: Account, name: str, rel: str, gender: str, age: int, lang: str, today: date) -> Patient:
-    p = Patient(owner_id=acc.id, name=name, relationship=rel, gender=gender, birth_date=_birth(age, today), preferred_language=lang)
+    # The same id on every rebuild, so a browser that is signed in during a reset keeps working.
+    p = Patient(id=mapper.stable_id("demo-person", acc.id, rel), owner_id=acc.id, name=name, relationship=rel, gender=gender,
+                birth_date=_birth(age, today), preferred_language=lang)
     p.fhir_json = mapper.patient_resource(p)
     db.add(p)
     db.commit()
