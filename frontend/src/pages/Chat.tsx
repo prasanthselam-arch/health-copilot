@@ -79,14 +79,7 @@ export default function Chat() {
   const dictation = useDictation({
     lang: voiceLang,
     onInterim: setInput,
-    onFinal: (text) => {
-      if (audioModeRef.current) send(text, true)
-      else {
-        setInput(text)
-        lastByVoice.current = true
-        box.current?.focus()
-      }
-    },
+    onFinal: (text) => send(text, true),
   })
 
   const ask = useMutation({

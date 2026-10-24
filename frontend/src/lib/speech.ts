@@ -193,6 +193,7 @@ interface Recognition extends EventTarget {
 }
 type RecognitionCtor = new () => Recognition
 const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
+const MOBILE = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
 
 const NativeRecognition: RecognitionCtor | undefined =
   typeof window === 'undefined'
@@ -208,9 +209,101 @@ function canRecord() {
   return typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && 'MediaRecorder' in window
 }
 
+interface Recording {
+  spoke: () => boolean
+  /** Stops and returns the audio, or null when nobody spoke. */
+  finish: () => Promise<Blob | null>
+  cancel: () => void
+}
+
 /**
- * Speech to text. Uses the browser's recogniser (Chrome, Edge, Safari) and falls back to recording the question and
- * transcribing it on the server (Firefox, or when the recogniser cannot reach its service).
+ * Records the microphone with a level meter. `onTurnEnd` fires once: after a pause when the user has spoken, after
+ * 8 s of nothing, or after 45 s. The speech threshold sits a little above the room's background noise and stays low
+ * enough for quiet laptop microphones.
+ */
+async function record(onLevel: (level: number) => void, onTurnEnd: () => void): Promise<Recording> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+  const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t))
+  const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
+  const parts: Blob[] = []
+  rec.ondataavailable = (e) => e.data.size && parts.push(e.data)
+  const ctx = new AudioContext()
+  void ctx.resume().catch(() => undefined)
+  const analyser = ctx.createAnalyser()
+  ctx.createMediaStreamSource(stream).connect(analyser)
+  const buf = new Uint8Array(analyser.fftSize)
+  let spoke = false
+  let voiced = 0
+  let floor = 0.004
+  let ended = false
+  let quietSince = performance.now()
+  const started = performance.now()
+  const timer = setInterval(() => {
+    analyser.getByteTimeDomainData(buf)
+    let sum = 0
+    for (const v of buf) sum += ((v - 128) / 128) ** 2
+    const rms = Math.sqrt(sum / buf.length)
+    onLevel(Math.min(1, rms * 8))
+    const now = performance.now()
+    const threshold = Math.min(0.05, Math.max(0.008, floor * 2.5))
+    if (rms > threshold) {
+      voiced++
+      quietSince = now
+      if (voiced >= 2) spoke = true // two loud frames in a row, so a click or a cough doesn't count
+    } else {
+      voiced = 0
+      floor = floor * 0.9 + rms * 0.1
+    }
+    if (!ended && ((spoke && now - quietSince > 1300) || now - started > 45_000 || (!spoke && now - started > 8000))) {
+      ended = true
+      onTurnEnd()
+    }
+  }, 80)
+  let closed = false
+  const close = () => {
+    if (closed) return
+    closed = true
+    clearInterval(timer)
+    onLevel(0)
+    stream.getTracks().forEach((t) => t.stop())
+    void ctx.close()
+  }
+  const blob = () => (spoke && parts.length ? new Blob(parts, { type: rec.mimeType || 'audio/webm' }) : null)
+  rec.start()
+  return {
+    spoke: () => spoke,
+    finish: () =>
+      new Promise((resolve) => {
+        if (rec.state === 'inactive') {
+          close()
+          return resolve(blob())
+        }
+        rec.onstop = () => resolve(blob())
+        rec.stop()
+        close()
+      }),
+    cancel: () => {
+      rec.onstop = null
+      if (rec.state !== 'inactive') rec.stop()
+      close()
+    },
+  }
+}
+
+async function transcribe(audio: Blob, lang: string): Promise<string> {
+  const fd = new FormData()
+  fd.append('audio', audio, 'question.webm')
+  fd.append('lang', lang)
+  const res = await fetch('/api/voice/transcribe', { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(String(res.status))
+  return ((await res.json()) as { text: string }).text.trim()
+}
+
+/**
+ * Speech to text. Uses the browser's recogniser (Chrome, Edge, Safari) for instant text. On computers the question is
+ * also recorded: when the recogniser's online service is blocked, slow or silent (common on office networks), the
+ * recording is transcribed on our server instead, so a spoken question is never lost. Phones use the recogniser
+ * alone (their microphone can't be shared) and switch to recording if its service fails. Firefox only records.
  */
 export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInterim: (t: string) => void; onFinal: (t: string) => void }) {
   const [status, setStatus] = useState<DictationStatus>('idle')
@@ -218,6 +311,7 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
   const [level, setLevel] = useState(0)
   const useServer = useRef(!NativeRecognition)
   const stopRef = useRef<() => void>(() => undefined)
+  const cancelRef = useRef<() => void>(() => undefined)
   const cbs = useRef({ onInterim, onFinal })
   useEffect(() => {
     cbs.current = { onInterim, onFinal }
@@ -226,149 +320,158 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
   const secure = typeof window === 'undefined' || window.isSecureContext
   const supported = secure && (!!NativeRecognition || canRecord())
 
-  const startServer = useCallback(async () => {
-    if (!canRecord()) return setError('mic_unsupported')
-    let stream: MediaStream
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
-    } catch {
-      return setError('mic_denied')
-    }
-    const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t))
-    const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
-    const parts: Blob[] = []
-    rec.ondataavailable = (e) => e.data.size && parts.push(e.data)
+  const begin = useCallback(
+    async function run(native: boolean): Promise<void> {
+      const withRecording = canRecord() && (!native || !MOBILE)
+      if (!native && !withRecording) return setError('mic_unsupported')
+      let rec: Recognition | null = null
+      let recording: Recording | null = null
+      let done = false
+      let nativeOver = !native // the recogniser ended or failed; only the recording is left
+      let heard = ''
+      let endTimer: ReturnType<typeof setTimeout> | undefined
+      let silence: ReturnType<typeof setTimeout> | undefined
+      let grace: ReturnType<typeof setTimeout> | undefined
 
-    // Stop by itself after a pause once the user has spoken, or after 45 s. The speech threshold adapts to the
-    // room: it is set a little above the background noise measured in the first moments.
-    const ctx = new AudioContext()
-    const analyser = ctx.createAnalyser()
-    ctx.createMediaStreamSource(stream).connect(analyser)
-    const buf = new Uint8Array(analyser.fftSize)
-    let spoke = false
-    let voiced = 0
-    let floor = 0.01
-    let quietSince = performance.now()
-    const started = performance.now()
-    const timer = setInterval(() => {
-      analyser.getByteTimeDomainData(buf)
-      let sum = 0
-      for (const v of buf) sum += ((v - 128) / 128) ** 2
-      const rms = Math.sqrt(sum / buf.length)
-      setLevel(Math.min(1, rms * 6))
-      const now = performance.now()
-      const threshold = Math.min(0.08, Math.max(0.02, floor * 2.5))
-      if (rms > threshold) {
-        voiced++
-        quietSince = now
-        if (voiced >= 2) spoke = true // two loud frames in a row, so a click or a cough doesn't count
-      } else {
-        voiced = 0
-        floor = floor * 0.9 + rms * 0.1
+      const cleanup = () => {
+        done = true
+        clearTimeout(endTimer)
+        clearTimeout(silence)
+        clearTimeout(grace)
+        if (rec && !nativeOver) {
+          nativeOver = true
+          try {
+            rec.abort()
+          } catch {
+            /* already stopped */
+          }
+        }
       }
-      if ((spoke && now - quietSince > 1300) || now - started > 45_000 || (!spoke && now - started > 8000)) stop()
-    }, 80)
+      const finish = async () => {
+        if (done) return
+        cleanup()
+        if (heard.trim()) {
+          recording?.cancel()
+          setStatus('idle')
+          return cbs.current.onFinal(heard.trim())
+        }
+        const audio = recording ? await recording.finish() : null
+        if (!audio) {
+          setStatus('idle')
+          return setError('no_speech')
+        }
+        setStatus('transcribing')
+        try {
+          const text = await transcribe(audio, lang)
+          if (text) cbs.current.onFinal(text)
+          else setError('no_speech')
+        } catch {
+          setError('voice_error')
+        } finally {
+          setStatus('idle')
+        }
+      }
+      // The recording heard the end of the question. If the recogniser has text it finishes the turn itself; if it
+      // has nothing yet it gets a moment to catch up before the recording is transcribed instead.
+      const onTurnEnd = () => {
+        if (done || heard) return
+        clearTimeout(grace)
+        grace = setTimeout(() => void finish(), nativeOver ? 0 : 1200)
+      }
 
-    let stopped = false
-    const stop = () => {
-      if (stopped) return
-      stopped = true
-      clearInterval(timer)
-      setLevel(0)
-      if (rec.state !== 'inactive') rec.stop()
-      stream.getTracks().forEach((t) => t.stop())
-      void ctx.close()
-      if (!spoke) {
-        rec.onstop = null
-        setStatus('idle')
-        setError('no_speech')
+      if (withRecording) {
+        try {
+          recording = await record(setLevel, onTurnEnd)
+        } catch {
+          if (!native) return setError('mic_denied')
+        }
       }
-    }
-    rec.onstop = async () => {
-      setStatus('transcribing')
-      try {
-        const fd = new FormData()
-        fd.append('audio', new Blob(parts, { type: rec.mimeType || 'audio/webm' }), 'question.webm')
-        fd.append('lang', lang)
-        const res = await fetch('/api/voice/transcribe', { method: 'POST', body: fd })
-        if (!res.ok) throw new Error(String(res.status))
-        const { text } = (await res.json()) as { text: string }
-        if (text.trim()) cbs.current.onFinal(text.trim())
-        else setError('no_speech')
-      } catch {
-        setError('voice_error')
-      } finally {
+      cancelRef.current = () => {
+        cleanup()
+        recording?.cancel()
         setStatus('idle')
       }
-    }
-    stopRef.current = stop
-    rec.start()
-    setStatus('listening')
-  }, [lang])
+      stopRef.current = () => {
+        if (done) return
+        if (rec && !nativeOver && heard) {
+          rec.stop()
+          endTimer = setTimeout(() => void finish(), 1500)
+        } else void finish()
+      }
+
+      if (native && NativeRecognition) {
+        rec = new NativeRecognition()
+        rec.lang = speechLocale(lang)
+        rec.interimResults = true
+        // Continuous mode lets slow speakers pause mid-sentence; we end the turn ourselves. Android's recogniser
+        // repeats earlier text in continuous mode, so it keeps the single-utterance mode there.
+        rec.continuous = !ANDROID
+        rec.maxAlternatives = 1
+        if (!recording) silence = setTimeout(() => !heard && rec?.stop(), 8000)
+        rec.onresult = (e) => {
+          let fin = ''
+          let interim = ''
+          for (let i = 0; i < e.results.length; i++) {
+            const r = e.results[i]
+            if (r.isFinal) fin += r[0].transcript
+            else interim += r[0].transcript
+          }
+          heard = (fin + interim).trim()
+          cbs.current.onInterim(heard)
+          // End the turn soon after a finished phrase, a little later while words are still arriving.
+          clearTimeout(endTimer)
+          clearTimeout(grace)
+          endTimer = setTimeout(() => {
+            rec?.stop()
+            endTimer = setTimeout(() => void finish(), 1500) // in case the recogniser never reports its end
+          }, interim ? 1600 : 900)
+        }
+        rec.onerror = (e) => {
+          if (done) return
+          if (e.error === 'aborted') return
+          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+            if (recording) {
+              nativeOver = true // the recogniser's service is refused, the microphone itself works
+              return
+            }
+            cleanup()
+            setStatus('idle')
+            return setError('mic_denied')
+          }
+          nativeOver = true
+          if (e.error === 'network' || e.error === 'language-not-supported') useServer.current = true
+          if (recording) return // keep recording; it ends the turn and is transcribed on the server
+          cleanup()
+          setStatus('idle')
+          if (e.error === 'network' || e.error === 'language-not-supported') return void run(false)
+          setError(e.error === 'no-speech' ? 'no_speech' : 'voice_error')
+        }
+        rec.onend = () => {
+          if (done) return
+          nativeOver = true
+          if (heard || !recording) void finish()
+        }
+        try {
+          rec.start()
+        } catch {
+          nativeOver = true
+          if (!recording) return setError('voice_error')
+        }
+      }
+      setStatus('listening')
+    },
+    [lang],
+  )
 
   const start = useCallback(() => {
     setError(null)
     if (!secure) return setError('mic_insecure')
     stopSpeaking()
-    if (useServer.current || !NativeRecognition) return void startServer()
-
-    const rec = new NativeRecognition()
-    rec.lang = speechLocale(lang)
-    rec.interimResults = true
-    // Continuous mode lets slow speakers pause mid-sentence; we end the turn ourselves. Android's recogniser repeats
-    // earlier text in continuous mode, so it keeps the single-utterance mode there.
-    rec.continuous = !ANDROID
-    rec.maxAlternatives = 1
-    let finalText = ''
-    let interimText = ''
-    let failed = false
-    let endTimer: ReturnType<typeof setTimeout> | undefined
-    const silence = setTimeout(() => !finalText && !interimText && rec.stop(), 8000)
-    rec.onresult = (e) => {
-      let fin = ''
-      let interim = ''
-      for (let i = 0; i < e.results.length; i++) {
-        const r = e.results[i]
-        if (r.isFinal) fin += r[0].transcript
-        else interim += r[0].transcript
-      }
-      finalText = fin
-      interimText = interim
-      cbs.current.onInterim((fin + interim).trim())
-      // End the turn soon after a finished phrase, a little later while words are still arriving.
-      clearTimeout(endTimer)
-      endTimer = setTimeout(() => rec.stop(), interim ? 1600 : 900)
-    }
-    rec.onerror = (e) => {
-      failed = true
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') setError('mic_denied')
-      else if (e.error === 'no-speech') setError('no_speech')
-      else if (e.error === 'network' || e.error === 'language-not-supported') {
-        // The recogniser needs its cloud service; record and transcribe on our server instead.
-        useServer.current = true
-        setStatus('idle')
-        void startServer()
-        return
-      } else if (e.error !== 'aborted') setError('voice_error')
-    }
-    rec.onend = () => {
-      clearTimeout(endTimer)
-      clearTimeout(silence)
-      setStatus((s) => (s === 'listening' ? 'idle' : s))
-      const heard = (finalText + interimText).trim()
-      if (!failed && heard) cbs.current.onFinal(heard)
-    }
-    stopRef.current = () => rec.stop()
-    try {
-      rec.start()
-      setStatus('listening')
-    } catch {
-      setError('voice_error')
-    }
-  }, [lang, secure, startServer])
+    void begin(!!NativeRecognition && !useServer.current)
+  }, [begin, secure])
 
   const stop = useCallback(() => stopRef.current(), [])
-  useEffect(() => () => stopRef.current(), [])
+  useEffect(() => () => cancelRef.current(), [])
 
   return { status, error, level, supported, secure, start, stop, clearError: () => setError(null) }
 }
