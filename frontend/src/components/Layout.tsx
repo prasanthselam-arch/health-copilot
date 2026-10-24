@@ -1,5 +1,8 @@
 import {
+  BellRing,
+  Bot,
   CalendarClock,
+  HeartPulse,
   Check,
   ChevronDown,
   ChevronsUpDown,
@@ -31,6 +34,7 @@ import { ThemeToggle } from './ThemeToggle'
 import { useTheme } from '@/lib/theme'
 import { Disclaimer } from './medical'
 import { ConfirmDialog, Spinner } from './ui'
+import { DueDoseToast } from './care'
 
 const NAV_GROUPS = [
   {
@@ -41,6 +45,14 @@ const NAV_GROUPS = [
       { to: '/timeline', key: 'timeline', icon: CalendarClock },
       { to: '/trends', key: 'trends', icon: LineChart },
       { to: '/medications', key: 'medications', icon: Pill },
+    ],
+  },
+  {
+    key: 'care',
+    items: [
+      { to: '/reminders', key: 'reminders', icon: BellRing },
+      { to: '/insights', key: 'insights', icon: HeartPulse },
+      { to: '/copilot', key: 'copilot', icon: Bot },
     ],
   },
   {
@@ -158,7 +170,7 @@ function CompactLanguageSwitcher() {
 
 const TAB_BAR = [
   { to: '/', label: 'nav.short_home', icon: LayoutDashboard },
-  { to: '/timeline', label: 'nav.timeline', icon: CalendarClock },
+  { to: '/reminders', label: 'nav.short_reminders', icon: BellRing },
   { to: '/upload', label: 'nav.upload', icon: Upload },
   { to: '/chat', label: 'nav.short_chat', icon: MessageCircleHeart },
 ]
@@ -484,6 +496,7 @@ export function Layout() {
       </div>
       <MobileTabBar onMore={() => setMore((m) => !m)} moreOpen={more} />
       {more && <MoreSheet onClose={closeMore} />}
+      {location.pathname !== '/reminders' && <DueDoseToast />}
     </div>
   )
 }

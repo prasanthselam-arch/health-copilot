@@ -7,7 +7,7 @@ from sqlmodel import Session, delete, select
 from app.api.deps import current_account
 from app.config import get_settings
 from app.db import get_session
-from app.models.tables import Account, EmailCode, Notification, Patient
+from app.models.tables import Account, EmailCode, Notification, Patient, PushSubscription
 from app.services import auth, codes, mailer
 from app.services.notifications import device_name, security_alert
 from app.services.records import delete_patient
@@ -238,7 +238,7 @@ def delete_account(body: DeleteIn, resp: Response, acc: Account = Depends(curren
     for p in db.exec(select(Patient).where(Patient.owner_id == acc.id)).all():
         delete_patient(db, p)
     auth.end_all_sessions(db, acc.id)
-    for table in (EmailCode, Notification):
+    for table in (EmailCode, Notification, PushSubscription):
         db.exec(delete(table).where(table.account_id == acc.id))
     db.delete(acc)
     db.commit()

@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, ArrowRight, ClipboardCheck, FileText, FlaskConical, HeartPulse, MailWarning, MessageCircleHeart, Pill, ShieldCheck, Sparkles, Stethoscope, Upload } from 'lucide-react'
+import { Activity, ArrowRight, BellRing, Bot, ClipboardCheck, FileText, FlaskConical, HeartPulse, MailWarning, MessageCircleHeart, Pill, ShieldCheck, Sparkles, Stethoscope, Upload } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { CriticalBanner, FlagBadge, MedSchedule } from '@/components/medical'
 import { SummaryView } from '@/components/SummaryView'
+import { DoseRow, LevelBadge, PushToggle } from '@/components/care'
 import { Badge, Button, Card, CardHeader, Empty, ErrorNote, Spinner } from '@/components/ui'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -90,6 +91,8 @@ export default function Dashboard() {
         </Card>
       ) : (
         <>
+          <CareStrip patientId={patient.id} />
+
           <Card className="overflow-hidden">
             <div className="theme-fixed relative flex flex-wrap items-center justify-between gap-3 overflow-hidden bg-gradient-to-r from-brand-700 via-brand-600 to-sky-600 px-5 py-4 text-white">
               <div className="bg-dots pointer-events-none absolute inset-0 opacity-60" />
@@ -343,6 +346,93 @@ function VerifyEmailBanner() {
           <ArrowRight className="h-4 w-4" />
         </Button>
       </Link>
+    </div>
+  )
+}
+
+
+/** Today's doses for this person and what the copilot found, right on the home screen. */
+function CareStrip({ patientId }: { patientId: string }) {
+  const { t } = useTranslation()
+  const lang = useLang()
+  const today = useQuery({ queryKey: ['today', 'home'], queryFn: () => api.today(), refetchInterval: 60_000 })
+  const care = useQuery({ queryKey: ['care', patientId, lang], queryFn: () => api.care(patientId, lang), staleTime: 60_000 })
+  const copilot = useQuery({ queryKey: ['copilot', patientId, lang], queryFn: () => api.copilot(patientId, lang) })
+  const doses = (today.data?.doses ?? []).filter((d) => d.patient_id === patientId)
+  const pending = doses.filter((d) => !['taken', 'skipped'].includes(d.status))
+  const shown = (pending.length ? pending : doses).slice(0, 4)
+  const attention = (care.data?.insights ?? []).filter((i) => i.level !== 'good').slice(0, 3)
+  const due = (care.data?.preventive ?? []).filter((x) => x.status === 'overdue').length
+  const proposals = (copilot.data ?? []).filter((a) => a.status === 'proposed').length
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <Card>
+        <CardHeader
+          icon={<BellRing className="h-5 w-5" />}
+          title={t('rem.today_title')}
+          subtitle={doses.length ? t('rem.progress', { done: doses.filter((d) => d.status === 'taken').length, total: doses.length }) : undefined}
+          action={
+            <div className="flex items-center gap-2">
+              <PushToggle compact />
+              <Link to="/reminders" aria-label={t('nav.reminders')} className="text-sm text-brand-700 hover:underline">
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          }
+        />
+        {today.isLoading ? (
+          <Spinner />
+        ) : shown.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-slate-500">{t('rem.no_doses')}</p>
+        ) : (
+          <ul className="divide-y divide-slate-900/[0.05]">
+            {shown.map((d) => (
+              <DoseRow key={`${d.reminder_id}${d.time}`} d={d} />
+            ))}
+          </ul>
+        )}
+      </Card>
+      <Card>
+        <CardHeader
+          icon={<Bot className="h-5 w-5" />}
+          title={t('care.home_title')}
+          subtitle={[due ? t('care.home_due', { count: due }) : null, proposals ? t('care.home_proposals', { count: proposals }) : null].filter(Boolean).join(' · ') || undefined}
+          action={
+            <Link to="/insights" aria-label={t('nav.insights')} className="text-sm text-brand-700 hover:underline">
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          }
+        />
+        {care.isLoading ? (
+          <Spinner />
+        ) : attention.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-slate-500">{t('care.no_risks')}</p>
+        ) : (
+          <ul className="divide-y divide-slate-900/[0.05]">
+            {attention.map((i) => (
+              <li key={i.key}>
+                <Link to="/insights" className="flex items-start justify-between gap-3 px-5 py-3 transition-colors hover:bg-brand-50/40">
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900">{i.title}</p>
+                    <p className="line-clamp-2 text-sm text-slate-500">{i.body}</p>
+                  </div>
+                  <LevelBadge level={i.level} />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        {proposals > 0 && (
+          <div className="border-t border-slate-900/[0.06] px-5 py-3">
+            <Link to="/copilot">
+              <Button size="sm" variant="secondary">
+                <Bot className="h-4 w-4 text-brand-600" />
+                {t('care.review_proposals', { count: proposals })}
+              </Button>
+            </Link>
+          </div>
+        )}
+      </Card>
     </div>
   )
 }

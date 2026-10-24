@@ -169,6 +169,9 @@ def import_from_hip(db: Session, patient: Patient, hi_types: list[str]) -> dict[
             payload.document.title = meta["title"]
             payload.document.facility = payload.document.facility or "City Care Hospital (Mock HIP)"
             confirm(db, doc, payload)
+            from app.services import agent
+
+            agent.after_confirm(db, doc)
             imported.append({"id": doc.id, "title": doc.title, "type": doc.doc_type,
                              "date": doc.document_date.isoformat() if doc.document_date else None})
     return {"consent": consent, "imported": imported, "fhir_validation_errors": errors[:10], "bundles": len(bundles)}

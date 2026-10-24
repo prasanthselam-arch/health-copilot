@@ -13,7 +13,10 @@ export function relationshipLabel(p: Pick<Patient, 'relationship' | 'relationshi
   return p.relationship === 'other' && p.relationship_other ? p.relationship_other : t(`relationship.${p.relationship}`)
 }
 
-const LOCALE: Record<Lang, string> = { en: 'en-IN', hi: 'hi-IN', te: 'te-IN', ta: 'ta-IN', kn: 'kn-IN' }
+const LOCALE: Record<Lang, string> = {
+  en: 'en-IN', hi: 'hi-IN', bn: 'bn-IN', mr: 'mr-IN', te: 'te-IN', ta: 'ta-IN', gu: 'gu-IN',
+  ur: 'ur-IN', kn: 'kn-IN', or: 'or-IN', ml: 'ml-IN', pa: 'pa-IN', as: 'as-IN',
+}
 
 export function fmtDate(iso: string | null | undefined, lang: Lang = 'en', opts?: Intl.DateTimeFormatOptions) {
   if (!iso) return ''

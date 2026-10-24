@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("SCHEDULER", "false")
+
 from datetime import timedelta
 
 import pytest

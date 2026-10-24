@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     mail_from_name: str = "Health Copilot"
     app_url: str = Field("http://localhost:5173", validation_alias=AliasChoices("APP_URL", "RENDER_EXTERNAL_URL"))
     cron_secret: str = ""  # lets the scheduled GitHub Action run the daily notification job
+    push_contact: str = ""  # contact email in Web Push (VAPID) claims
+    scheduler: bool = True  # background reminder loop; off in tests
 
     @property
     def mail_debug(self) -> bool:

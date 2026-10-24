@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toLang } from '@/i18n'
 import { api } from './api'
 import { useAuth } from './auth'
 import type { Lang, Patient } from './types'
@@ -52,6 +53,5 @@ export function useActivePatient(): Patient {
 
 export function useLang(): Lang {
   const { i18n } = useTranslation()
-  const l = (i18n.resolvedLanguage ?? i18n.language ?? 'en').slice(0, 2)
-  return (['en', 'hi', 'te', 'ta', 'kn'].includes(l) ? l : 'en') as Lang
+  return toLang(i18n.resolvedLanguage ?? i18n.language)
 }

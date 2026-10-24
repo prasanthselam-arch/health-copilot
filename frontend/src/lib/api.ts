@@ -1,5 +1,13 @@
 import type {
   Account,
+  Adherence,
+  Appointment,
+  CareOverview,
+  CopilotAction,
+  Dose,
+  Reminder,
+  ReminderSlot,
+  VisitPrep,
   CodeSent,
   ChatReply,
   DocumentInfo,
@@ -102,14 +110,14 @@ export const api = {
   refreshReview: (docId: string, payload: ReviewPayload) =>
     request<ReviewPayload>(`/api/documents/${docId}/review/refresh`, json('POST', payload)),
   confirm: (docId: string, payload: ReviewPayload) =>
-    request<{ document: DocumentInfo; saved: Record<string, number> }>(`/api/documents/${docId}/confirm`, json('POST', payload)),
+    request<{ document: DocumentInfo; saved: Record<string, number>; copilot?: { id: string; kind: string; title: string }[] }>(`/api/documents/${docId}/confirm`, json('POST', payload)),
   reprocess: (docId: string) => request<DocumentInfo>(`/api/documents/${docId}/reprocess`, json('POST')),
   deleteDocument: (docId: string) => request<{ deleted: boolean }>(`/api/documents/${docId}`, json('DELETE')),
   documentFhir: (docId: string) => request<{ bundle: Record<string, unknown>; validation_errors: string[] }>(`/api/documents/${docId}/fhir`),
   documentSummary: (docId: string, lang: Lang) => request<Summary>(`/api/documents/${docId}/summary?lang=${lang}`),
   patientSummary: (id: string, lang: Lang) => request<Summary>(`/api/patients/${id}/summary?lang=${lang}`),
-  chat: (id: string, message: string, history: { role: string; content: string }[], lang: Lang) =>
-    request<ChatReply>(`/api/patients/${id}/chat`, json('POST', { message, history, lang })),
+  chat: (id: string, message: string, history: { role: string; content: string }[], lang: Lang, voice = false) =>
+    request<ChatReply>(`/api/patients/${id}/chat`, json('POST', { message, history, lang, voice })),
   abhaInit: (id: string, body: { abha_number?: string; abha_address?: string }) =>
     request<{ txn_id: string; message: string; demo_otp_hint: string }>(`/api/patients/${id}/abha/init`, json('POST', body)),
   abhaConfirm: (id: string, txn_id: string, otp: string) =>
@@ -123,4 +131,29 @@ export const api = {
     }>(`/api/patients/${id}/abha/import`, json('POST', { hi_types })),
   abhaUnlink: (id: string) => request<{ linked: boolean }>(`/api/patients/${id}/abha`, json('DELETE')),
   fhirExportUrl: (id: string) => `/api/patients/${id}/fhir`,
+
+  today: (day?: string) => request<{ day: string; now: string; doses: Dose[]; appointments: Appointment[] }>(`/api/today${day ? `?day=${day}` : ''}`),
+  dueDoses: () => request<Dose[]>('/api/reminders/due'),
+  dose: (reminderId: string, body: { day: string; time: string; action: 'taken' | 'skipped' | 'snoozed' | 'undo'; minutes?: number }) =>
+    request<{ status: string; snooze_until: string | null }>(`/api/reminders/${reminderId}/doses`, json('POST', body)),
+  reminders: (id: string) => request<{ reminders: Reminder[]; appointments: Appointment[]; adherence: Adherence }>(`/api/patients/${id}/reminders`),
+  createReminder: (id: string, body: { title: string; detail?: string; slots: Pick<ReminderSlot, 'time' | 'amount'>[]; end_date?: string | null }) =>
+    request<Reminder>(`/api/patients/${id}/reminders`, json('POST', body)),
+  updateReminder: (
+    rid: string,
+    body: { title?: string; detail?: string; slots?: Pick<ReminderSlot, 'time' | 'amount'>[]; end_date?: string; clear_end_date?: boolean; status?: 'active' | 'paused' | 'ended' },
+  ) => request<Reminder>(`/api/reminders/${rid}`, json('PATCH', body)),
+  deleteReminder: (rid: string) => request<{ deleted: boolean }>(`/api/reminders/${rid}`, json('DELETE')),
+  createAppointment: (id: string, body: Partial<Appointment> & { title: string; due_date: string }) =>
+    request<Appointment>(`/api/patients/${id}/appointments`, json('POST', body)),
+  updateAppointment: (aid: string, body: Partial<Appointment>) => request<Appointment>(`/api/appointments/${aid}`, json('PATCH', body)),
+  care: (id: string, lang: Lang) => request<CareOverview>(`/api/patients/${id}/care?lang=${lang}`),
+  copilot: (id: string, lang: Lang) => request<CopilotAction[]>(`/api/patients/${id}/copilot?lang=${lang}`),
+  decide: (aid: string, decision: 'keep' | 'undo' | 'accept' | 'dismiss' | 'edit', items?: { label: string }[]) =>
+    request<CopilotAction>(`/api/copilot/${aid}`, json('POST', { decision, items })),
+  visitPrep: (id: string, lang: Lang) => request<VisitPrep>(`/api/patients/${id}/visit-prep?lang=${lang}`),
+  pushKey: () => request<{ public_key: string }>('/api/push/key'),
+  pushSubscribe: (sub: PushSubscriptionJSON) => request<{ subscribed: boolean }>('/api/push/subscribe', json('POST', sub)),
+  pushUnsubscribe: (endpoint: string) => request<{ subscribed: boolean }>('/api/push/unsubscribe', json('POST', { endpoint })),
+  pushTest: () => request<{ sent: number }>('/api/push/test', json('POST')),
 }

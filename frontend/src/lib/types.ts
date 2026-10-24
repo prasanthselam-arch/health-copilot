@@ -25,7 +25,7 @@ export const RELATIONSHIPS = [
 ] as const
 export type Relationship = (typeof RELATIONSHIPS)[number]
 
-export type Lang = 'en' | 'hi' | 'te' | 'ta' | 'kn'
+export type Lang = 'en' | 'hi' | 'bn' | 'mr' | 'te' | 'ta' | 'gu' | 'ur' | 'kn' | 'or' | 'ml' | 'pa' | 'as'
 export type Flag = 'N' | 'L' | 'H' | 'LL' | 'HH' | 'A' | null
 
 export interface Patient {
@@ -356,4 +356,149 @@ export interface Health {
   verification: boolean
   knowledge: { lab_tests: number; drugs: number; icd10: number }
   languages: Record<Lang, string>
+}
+
+export type DoseStatus = 'pending' | 'due' | 'missed' | 'taken' | 'skipped' | 'snoozed'
+
+export interface Dose {
+  reminder_id: string
+  patient_id: string
+  patient_name: string
+  language: Lang
+  medication_id: string | null
+  title: string
+  detail: string | null
+  amount: string
+  slot: 'morning' | 'afternoon' | 'night'
+  time: string
+  day: string
+  status: DoseStatus
+  snooze_until: string | null
+  acted_at: string | null
+}
+
+export interface ReminderSlot {
+  time: string
+  slot: string
+  amount: string
+}
+
+export interface Reminder {
+  id: string
+  patient_id: string
+  medication_id: string | null
+  title: string
+  detail: string | null
+  slots: ReminderSlot[]
+  weekdays: number[] | null
+  start_date: string
+  end_date: string | null
+  status: 'active' | 'paused' | 'ended'
+  source: 'copilot' | 'user'
+}
+
+export interface Appointment {
+  id: string
+  patient_id: string
+  patient_name?: string
+  kind: 'visit' | 'test'
+  title: string
+  due_date: string
+  time: string | null
+  doctor: string | null
+  facility: string | null
+  notes: string | null
+  status: 'upcoming' | 'done' | 'cancelled'
+  source: 'copilot' | 'user'
+  source_text: string | null
+  document_id: string | null
+}
+
+export interface Adherence {
+  days: number
+  scheduled: number
+  taken: number
+  percent: number | null
+}
+
+export interface Evidence {
+  id: string
+  test: string
+  value: number | string | null
+  unit: string | null
+  date: string | null
+  flag: string | null
+  document_id: string | null
+}
+
+export interface Insight {
+  key: string
+  kind: 'persistent' | 'trend' | 'combination' | 'improving' | 'range'
+  level: 'attention' | 'watch' | 'good'
+  title: string
+  body: string
+  evidence: Evidence[]
+  test: string
+  next_step: string | null
+  question: string | null
+}
+
+export interface PreventiveItem {
+  key: string
+  kind: 'repeat_test' | 'follow_up' | 'screening'
+  title: string
+  why: string
+  status: 'overdue' | 'due_soon' | 'not_done' | 'ok' | 'ask'
+  due_date: string | null
+  last_date: string | null
+  interval_days: number | null
+  evidence: Evidence[]
+  source: string
+  appointment_id?: string
+  document_id?: string | null
+}
+
+export interface WellnessTip {
+  key: string
+  category: 'diet' | 'activity' | 'sleep' | 'habits' | 'monitoring'
+  title: string
+  body: string
+  why: string
+  evidence: Evidence[]
+}
+
+export interface CareOverview {
+  insights: Insight[]
+  preventive: PreventiveItem[]
+  wellness: WellnessTip[]
+  adherence: Adherence
+  profile: { age: number | null; gender: string | null; conditions: string[] }
+  translated: boolean
+  language: Lang
+  disclaimer: string
+}
+
+export interface CopilotAction {
+  id: string
+  patient_id: string
+  kind: 'reminders' | 'reminders_stopped' | 'appointment' | 'test_due' | 'overdue' | 'questions'
+  title: string
+  detail: string | null
+  items: { label: string; detail?: string; ref?: string }[]
+  ref_ids: string[]
+  document_id: string | null
+  status: 'done' | 'proposed' | 'kept' | 'accepted' | 'rejected' | 'resolved' | 'superseded'
+  created_at: string
+}
+
+export interface VisitPrep {
+  patient: { name: string; age: number | null; gender: string | null; conditions: string[] }
+  questions: string[]
+  questions_action_id: string | null
+  medications: { id: string; name: string; strength?: string; schedule?: string; meal?: string; status?: string }[]
+  insights: Insight[]
+  due: PreventiveItem[]
+  adherence: Adherence
+  generated_on: string
+  disclaimer: string
 }

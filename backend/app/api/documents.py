@@ -13,7 +13,7 @@ from app.models.tables import Document, Patient
 from app.pipeline import runner
 from app.pipeline.validate import refresh_review
 from app.schemas.review import ReviewPayload
-from app.services import records, summary
+from app.services import agent, records, summary
 from app.services.safety import LANGUAGES
 
 router = APIRouter(prefix="/api", tags=["documents"])
@@ -103,8 +103,10 @@ def confirm(payload: ReviewPayload, d: Document = Depends(document_or_404), db: 
     p = db.get(Patient, d.patient_id)
     payload = refresh_review(payload, p.gender if p else None)
     stats = records.confirm(db, d, payload)
+    actions = agent.after_confirm(db, d)
     db.refresh(d)
-    return {"document": _doc_out(d), "saved": stats}
+    return {"document": _doc_out(d), "saved": stats,
+            "copilot": [{"id": a.id, "kind": a.kind, "title": a.title} for a in actions]}
 
 
 @router.post("/documents/{document_id}/reprocess")

@@ -10,7 +10,7 @@ extend Health Copilot.
 3. [Running locally](#3-running-locally)
 4. [Accounts, email codes and notifications](#4-accounts-email-codes-and-notifications)
 5. [Demo data and maintenance commands](#5-demo-data-and-maintenance-commands)
-6. [Deploying for free on Render](#6-deploying-for-free-on-render)
+6. [Deploying: AWS (the live site) or Render](#6-deploying-aws-the-live-site-or-render)
 7. [Configuration reference](#7-configuration-reference)
 8. [Tests and evaluation](#8-tests-and-evaluation)
 9. [Project layout](#9-project-layout)
@@ -37,6 +37,38 @@ extend Health Copilot.
   critical-value banners. A newer prescription of the same drug automatically supersedes the older one.
 - **Ask my records:** chat grounded only in the patient's own records, with citations, voice input and read-aloud,
   automatic reply language, and emergency detection.
+- **Medicine reminders (copilot):** confirming a prescription schedules a reminder for every regular medicine at the
+  prescription's own times: morning 08:00, afternoon 14:00, night 21:00, 30 minutes earlier for "before food",
+  07:00 for empty stomach and 22:00 for bedtime. Each reminder ends with the course (a "for 5 days" medicine stops on
+  day 5), SOS and STAT medicines are never scheduled, and a newer prescription of the same drug replaces the old
+  reminder. The **Reminders** page shows the day for one person or the whole family: **Taken**, **Snooze 15 min**,
+  **Skip** and **Undo** for every dose, missed doses after 2 hours, 7-day adherence, and editing of times, pause,
+  resume, stop or delete. Reminders arrive as phone or desktop notifications (Web Push, with Taken and Snooze buttons
+  on the notification itself) and as an in-app card when a dose is due.
+- **Visits and tests:** follow-ups in the doctor's notes ("Review after 1 month with fasting sugar report", "Repeat
+  HbA1c after 3 months", dates such as 12/11/2026) become dated visits and tests, with a notification the
+  evening before and on the morning. They can be marked done, edited or added by hand.
+- **Health insights:** computed in code from the person's own results, never by the model, and each one cites the
+  results it is based on (test, value, date, source record):
+  - *trends:* a value outside the range in 2 or more consecutive reports, still rising or falling the wrong way,
+    nearing its limit, critical, or improving;
+  - *combinations doctors look at together:* sugar with LDL, triglycerides with low HDL, the iron-deficiency pattern
+    (Hb, MCV, ferritin), B12, kidney results with diabetes or BP (and metformin), thyroid on treatment, liver
+    enzymes with metabolic risk;
+  - *preventive next steps:* repeat tests that are due or overdue (HbA1c every 3 months when above target, lipids,
+    kidney, CBC, thyroid, vitamin D, B12, liver, uric acid), unless a visit or test is already planned for it, and
+    screenings for the person's age, sex and conditions (diabetic eye, foot and urine ACR checks, home BP, NPCDCS
+    screening from 30, cervical and breast screening, colon from 50, bone density, flu vaccine, eyes and hearing
+    from 60). Everything is worded as something to discuss with the doctor.
+- **Wellness plan:** diet, activity, sleep and habit tips chosen for the person's results, conditions and age, each
+  with the reason in their own data (for example, "your HbA1c went 7.4% → 7.9% → 8.6%"). Indian food context and
+  general wellness only: no diets, supplements or medicine changes.
+- **Copilot actions (agentic, with you in control):** after each confirmed document the copilot acts on its own and
+  shows what it did: reminders scheduled or stopped, follow-ups and repeat tests added, and three questions drafted
+  for the next visit from the latest results. A daily check also flags overdue follow-ups and repeat tests that are
+  due. Every action can be **kept**, **edited**, **undone** (removes the reminders or appointment it created) or
+  **dismissed**, and suggestions can be accepted (adds the test to Reminders) or marked done. The **visit sheet**
+  is a printable page with the questions, current medicines, results to discuss and tests due.
 - **Family:** one account holds the account holder's own profile plus any number of family members, each with their
   own records. The account holder adds, edits or removes members on the **Family** page.
 - **Your account:** the three-dot menu at the top right shows who is signed in and opens **Your account** (name, mobile
@@ -46,9 +78,24 @@ extend Health Copilot.
   - Mock ABHA flow: link with OTP, consent artefact, and import from a mock Health Information Provider.
   - A readable view of each bundle (patient, practitioner, results, medicines, conditions, codes), with the raw JSON
     one click away.
-- **Interface:** English, Hindi, Telugu, Tamil and Kannada throughout; light and dark themes (the system theme is
-  followed until the user picks one).
-- **On phones:** a compact header, a bottom tab bar (Home, Timeline, Upload, Ask, More) and layouts that fit screens
+- **Languages:** the 12 most-spoken Indian languages plus English: Hindi, Bengali, Marathi, Telugu, Tamil, Gujarati,
+  Urdu (right to left), Kannada, Odia, Malayalam, Punjabi and Assamese. Each person's profile has its own language,
+  used for summaries, chat replies, voice, reminders, insights and notifications, so a parent can use Telugu while
+  the account holder uses English. Only English is in the main bundle; other languages load when first chosen.
+- **Voice:** ask by voice and hear the answer, in the profile's language (the browser's recogniser and voices where
+  available, the server's speech models otherwise). Ask "What medicines do I take tonight?" in Telugu: the chat
+  knows the reminder times and answers from today's schedule. Built to feel quick:
+  - the microphone listens in each family member's own language, lets slow speakers pause mid-sentence, and ends
+    the turn about a second after they stop (the recording fallback adapts its threshold to the room's noise);
+  - spoken questions get a short spoken-style answer (1-3 sentences, no tables) with minimal model thinking, and the
+    answer is read aloud automatically;
+  - chat, voice and translation calls never wait on a struggling model: each model gets one try, a slow one is raced
+    by the next after 6 seconds, the first answer wins, and overloaded models are skipped for a while;
+  - server read-aloud starts with the first sentence while the rest is generated;
+  - if every model is busy or out of quota, "which medicines tonight / this morning / today?" is still answered
+    instantly from the reminder schedule, in any of the 13 languages.
+- **Interface:** light and dark themes (the system theme is followed until the user picks one).
+- **On phones:** a compact header, a bottom tab bar (Home, Today, Upload, Ask, More) and layouts that fit screens
   from 360 px wide. The site can be installed to the home screen as an app (web app manifest and icons).
 
 **Measured accuracy** ([`eval/report.md`](eval/report.md)): on 10 synthetic documents with 96 items, the pipeline
@@ -178,16 +225,39 @@ If HTTPS calls fail with certificate errors, for example behind Zscaler:
 Each can be turned off under **Your account**. All need a verified email.
 
 - **Security alerts:** new sign-in (with the browser and device), password changed or reset, email changed.
-- **Medicine reminders:** when a course with a known duration ends within 2 days or ended in the last 3. Each course
+- **Dose reminders (push):** each device that turns on **Get reminders on this device** (Reminders page or
+  dashboard) gets a Web Push notification at every dose time, in the person's language, with **Taken** and **Snooze
+  15 min** buttons. A dose is announced once, up to 45 minutes after its time; a snoozed dose is announced again when
+  the snooze ends. Visits and tests are announced at 18:00 the day before and 08:00 on the day. No email is needed.
+  On iPhone, push works after adding the site to the Home Screen.
+- **Course-ending emails:** when a course with a known duration ends within 2 days or ended in the last 3. Each course
   is reminded about once.
 - **Weekly summary:** per family member, new records, results outside the usual range and active medicines.
 
-Reminders and summaries are sent by a daily job (see [the deploy section](#daily-reminders-and-weekly-summaries)).
-Emails are in English.
+Push notifications come from a scheduler inside the web process (it checks every 30 seconds). It also runs the daily
+copilot check and the email job at 9 AM IST. On Render, which sleeps, the GitHub Action below wakes it instead (see
+[the deploy section](#daily-reminders-and-weekly-summaries)). Emails are in English.
 
 ## 5. Demo data and maintenance commands
 
-To load a demo account (`demo@healthcopilot.in`, password `demo12345`) with a patient, an ABHA link and a year of
+The Round 2 demo family (no LLM calls) shows every feature on realistic records:
+
+```bash
+cd backend && .venv/bin/python -m app.demo          # resets the demo account demo@healthcopilot.in / demo12345
+docker exec health-copilot python -m app.demo       # the same on the server
+```
+
+- **Ravi Kumar** (36, English): a fever prescription from 3 days ago with a 5-day antibiotic, so the copilot has just
+  scheduled reminders that end with the course and drafted questions.
+- **Ramesh Kumar** (father, 64, Hindi): three reports over nine months with HbA1c 7.4% → 7.9% → 8.6%, rising LDL and
+  creatinine, a diabetes prescription, an overdue follow-up and an overdue repeat HbA1c.
+- **Lakshmi Kumar** (mother, 59, Telugu): low haemoglobin and ferritin, high TSH and low vitamin D, on thyroid, iron
+  and calcium tablets with bedtime and empty-stomach times.
+
+A week of dose history (with a few missed doses) gives the adherence figures. It uses the same confirm path as real
+uploads, so the reminders, appointments and copilot actions are created by the agent itself.
+
+The original Round 1 demo is still available. To load a demo account (`demo@healthcopilot.in`, password `demo12345`) with a patient, an ABHA link and a year of
 records (no LLM calls needed), against a local backend:
 
 ```bash
@@ -207,7 +277,65 @@ cd backend && .venv/bin/python -m app.manage accounts                      # lis
 cd backend && .venv/bin/python -m app.manage assign-orphans demo@healthcopilot.in
 ```
 
-## 6. Deploying for free on Render
+## 6. Deploying: AWS (the live site) or Render
+
+### On AWS (free tier), the live site
+
+The live site, [healthcopilot.duckdns.org](https://healthcopilot.duckdns.org), runs on one always-on EC2 instance,
+so the reminder scheduler and push notifications work without any outside timer.
+
+| Piece | Service | Role |
+|---|---|---|
+| Server | EC2 `t3.micro` (free tier), Ubuntu 24.04, 30 GB gp3, 2 GB swap | Runs the Docker container |
+| Address | Elastic IP + [DuckDNS](https://www.duckdns.org) name | A fixed, free domain name |
+| HTTPS | [Caddy](https://caddyserver.com) | Let's Encrypt certificate and reverse proxy |
+| Data | Docker volume `hc-data` | SQLite database, uploaded files and the push (VAPID) key |
+
+1. **Launch the instance:** EC2 → Launch instance, Ubuntu 24.04, `t3.micro`, a new key pair, 30 GB gp3. In the
+   security group, allow SSH from your IP, and HTTP (80) and HTTPS (443) from anywhere. Allocate an **Elastic IP**
+   and associate it with the instance.
+2. **Name it:** sign in to DuckDNS, create a subdomain (for example `healthcopilot`) and set it to the Elastic IP.
+3. **Prepare the server** (`ssh -i key.pem ubuntu@<elastic-ip>`):
+
+   ```bash
+   sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+   sudo apt update && sudo apt install -y docker.io caddy git
+   sudo usermod -aG docker ubuntu     # then log out and back in
+   ```
+
+4. **Configure and run the app:**
+
+   ```bash
+   git clone https://github.com/prasanthselam-arch/health-copilot.git && cd health-copilot
+   cat > ~/hc.env <<EOF
+   GEMINI_API_KEY=...
+   COOKIE_SECURE=true
+   APP_URL=https://healthcopilot.duckdns.org
+   CRON_SECRET=$(openssl rand -hex 24)
+   WORKER_THREADS=1
+   EOF
+   chmod 600 ~/hc.env
+   docker build -t health-copilot .
+   docker run -d --name health-copilot --restart unless-stopped --env-file ~/hc.env \
+     -p 127.0.0.1:10000:10000 -v hc-data:/app/backend/data health-copilot
+   ```
+
+   Port 10000 is bound to localhost, so only Caddy can reach it.
+5. **Turn on HTTPS:** put this in `/etc/caddy/Caddyfile`, then run `sudo systemctl reload caddy`:
+
+   ```
+   healthcopilot.duckdns.org {
+       reverse_proxy 127.0.0.1:10000
+   }
+   ```
+
+6. **Load the demo family:** `docker exec health-copilot python -m app.demo`.
+
+**Updating:** `git pull && docker build -t health-copilot . && docker rm -f health-copilot`, then the same
+`docker run` command. The data volume is kept.
+
+### On Render (free alternative)
 
 Everything runs on free plans:
 
@@ -310,11 +438,13 @@ All settings are environment variables, read from `backend/.env` locally (see
 | `MAIL_FROM_NAME` | `Health Copilot` | Sender name on emails |
 | `APP_URL` | Render's address, else `http://localhost:5173` | Used for links in emails |
 | `CRON_SECRET` | — | Lets the daily GitHub Action run reminders and weekly summaries |
+| `SCHEDULER` | `true` | The in-process loop for push reminders, appointment notices and the daily copilot check. Off in tests |
+| `PUSH_CONTACT` | `APP_URL` | Contact URL or `mailto:` sent to push services with each notification (VAPID subject) |
 
 ## 8. Tests and evaluation
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q        # 96 unit tests: validators, knowledge base, FHIR, ABHA, safety, records, accounts, email codes, data sync, pipeline runner
+cd backend && .venv/bin/python -m pytest -q        # 104 tests: validators, knowledge base, FHIR, ABHA, safety, records, accounts, email codes, data sync, pipeline, reminders, insights, copilot
 backend/.venv/bin/python eval/make_samples.py      # regenerate the 10 synthetic documents + ground truth (deterministic)
 backend/.venv/bin/python eval/run_eval.py          # run the pipeline on all samples and write eval/report.md (about 30 LLM calls)
 backend/.venv/bin/python eval/run_eval.py --rescore eval/runs/<run>   # re-score saved outputs without LLM calls
@@ -332,13 +462,19 @@ backend/app/
   knowledge/   lab_ranges.json (60 LOINC tests) · drugs_india.csv (213 brands) · dosage_terms.json · icd10.json · mock HIP records
   fhir/        mapper (NRCeS profiles) · bundle (document bundles, patient export, FHIR import)
   services/    records (confirm + medicine reconciliation) · summary · chat · facts · safety · abha_mock
+               reminders (schedules, doses, follow-ups) · care (risk insights, preventive steps) · wellness
+               agent (copilot actions) · scheduler · push (Web Push) · translate
                auth · contact · codes (email codes) · mailer · notifications · datastore (GitHub data sync)
-  api/         auth · patients · documents · insights (summary, chat, ABHA) · voice · internal (daily job)
+  api/         auth · patients · documents · insights (summary, chat, ABHA) · care (reminders, insights, copilot, push)
+               voice · internal (daily job)
+  demo.py      the Round 2 demo family (python -m app.demo)
   models/      SQLModel tables shaped like FHIR resources, plus accounts, sessions, codes and notifications
 frontend/src/
   pages/       Auth · Onboarding · Dashboard · Upload · Review · DocumentView · Timeline · Trends · Medications · Chat · Abha · Profiles (family) · Account
+               Reminders · Insights · Copilot · VisitSheet
   components/  layout (sidebar, phone tab bar, account menu), review and record views, FHIR viewer, code entry, dialogs
-  i18n/        en, hi, te, ta, kn
+  i18n/        en, hi, bn, mr, te, ta, gu, ur, kn, or, ml, pa, as (lazy-loaded)
+public/sw.js   service worker for push notifications and their Taken / Snooze buttons
 eval/          make_samples.py · samples/ (documents + ground truth) · run_eval.py · report.md · notes.md
 scripts/       seed_demo.py · e2e_smoke.py · google-apps-script/Code.gs
 docs/          architecture.md (+ PNG diagrams) · slides.md / slides.pdf · demo_script.md · screenshots/
@@ -353,7 +489,13 @@ Dockerfile · render.yaml · .github/workflows/ (ci.yml, notify.yml) · run.sh
   screen shows a disclaimer. Critical values show a "contact a doctor or seek urgent care" banner, and emergency
   symptoms in chat show the 112 notice.
 - **Code decides what is abnormal.** High, Low and Critical flags, unit conversions, codes and schedules are computed
-  deterministically. The AI explains them and writes prose only.
+  deterministically. The AI explains them and writes prose only. Risk insights, preventive steps, wellness tips and
+  reminders are computed in code too; the model only translates their text, with every number checked.
+- **Insights inform, they don't diagnose.** They say what the records show and suggest discussing it with a doctor;
+  they never name a new diagnosis or suggest starting, stopping or changing a medicine. Stopping a reminder asks
+  for confirmation and says to do so only when the course ended or the doctor said so.
+- **Copilot actions are reversible.** Everything the copilot does on its own is listed with its source record and can
+  be undone.
 - **Nothing is saved without human confirmation.** Low-confidence, disputed and verifier-added items are highlighted
   for review.
 

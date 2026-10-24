@@ -1,4 +1,4 @@
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Layout } from './components/Layout'
@@ -19,6 +19,10 @@ const Chat = lazy(() => import('./pages/Chat'))
 const Abha = lazy(() => import('./pages/Abha'))
 const Profiles = lazy(() => import('./pages/Profiles'))
 const Account = lazy(() => import('./pages/Account'))
+const Reminders = lazy(() => import('./pages/Reminders'))
+const Insights = lazy(() => import('./pages/Insights'))
+const Copilot = lazy(() => import('./pages/Copilot'))
+const VisitSheet = lazy(() => import('./pages/VisitSheet'))
 
 export default function App() {
   const { t } = useTranslation()
@@ -55,6 +59,14 @@ function SignedInApp() {
   return (
     <Routes>
         <Route path="/profiles/new" element={<Onboarding addMember />} />
+        <Route
+          path="/visit-sheet"
+          element={
+            <Suspense fallback={<Spinner className="h-full" />}>
+              <VisitSheet />
+            </Suspense>
+          }
+        />
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="upload" element={<UploadPage />} />
@@ -63,6 +75,9 @@ function SignedInApp() {
           <Route path="timeline" element={<Timeline />} />
           <Route path="trends" element={<Trends />} />
           <Route path="medications" element={<Medications />} />
+          <Route path="reminders" element={<Reminders />} />
+          <Route path="insights" element={<Insights />} />
+          <Route path="copilot" element={<Copilot />} />
           <Route path="chat" element={<Chat />} />
           <Route path="abha" element={<Abha />} />
           <Route path="profiles" element={<Profiles />} />

@@ -7,20 +7,28 @@
 [![CI](https://github.com/prasanthselam-arch/health-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/prasanthselam-arch/health-copilot/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![FHIR R4](https://img.shields.io/badge/FHIR-R4%20%C2%B7%20NRCeS-e34c26)
-![Languages](https://img.shields.io/badge/languages-EN%20%C2%B7%20HI%20%C2%B7%20TE%20%C2%B7%20TA%20%C2%B7%20KN-2ea44f)
-![Hosting](https://img.shields.io/badge/hosting-100%25%20free%20tier-8a2be2)
+![Languages](https://img.shields.io/badge/languages-English%20%2B%2012%20Indian-2ea44f)
+![Hosting](https://img.shields.io/badge/hosting-AWS%20free%20tier-ff9900)
 
-[**Live demo**](https://health-copilot-kl7g.onrender.com) · [**Demo video**](docs/submission/Health-Copilot-demo.mp4) · [**Full documentation**](DOCUMENT.md) · [Architecture](docs/architecture.md) · [Slides](docs/slides.pdf) · [Deck (PPTX)](docs/submission/Health-Copilot-demo.pptx) · [Demo script](docs/demo_script.md)
+[**Live demo**](https://healthcopilot.duckdns.org) · [**Demo video**](docs/submission/Health-Copilot-demo.mp4) · [**Full documentation**](DOCUMENT.md) · [Architecture](docs/architecture.md) · [Slides](docs/slides.pdf) · [Deck (PPTX)](docs/submission/Health-Copilot-demo.pptx) · [Demo script](docs/demo_script.md)
 
 </div>
 
 ---
 
 Photograph a handwritten prescription, a Telugu lab report or a ten-page discharge summary. Health Copilot turns it
-into a verified, unified health record. It explains every abnormal value in plain English, Hindi, Telugu, Tamil or
-Kannada, answers questions with citations to the source documents, and exports everything as ABDM-ready FHIR R4.
+into a verified, unified health record. It explains every abnormal value in plain language, answers questions with
+citations to the source documents, and exports everything as ABDM-ready FHIR R4.
 
-*Built for the Altrix Labs hackathon "AI-Powered Personal Health Copilot".*
+Then it keeps the family on track. A copilot schedules each medicine's reminders from the prescription and stops them
+when the course ends, turns "review after 1 month" into a dated follow-up, spots a father's sugar rising across three
+reports and prompts the overdue HbA1c, and drafts the questions for the next visit. Everything it does is shown, and
+can be kept, edited or undone. Insights, preventive steps and a wellness plan come from each person's own results, and
+everything works in English and 12 Indian languages, by voice too.
+
+*Built for the Altrix Labs hackathon "AI-Powered Personal Health Copilot" (Round 2: the engagement layer).*
+
+**Try it:** [healthcopilot.duckdns.org](https://healthcopilot.duckdns.org), sign in as `demo@healthcopilot.in` / `demo12345`.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -28,12 +36,16 @@ Kannada, answers questions with citations to the source documents, and exports e
 
 | | |
 |---|---|
+| **A copilot you stay in charge of** | Confirming a prescription schedules every medicine at its own times (before food, bedtime, 1-0-1) and ends each reminder with the course. Follow-ups in the doctor's notes become dated visits and tests, overdue ones are flagged daily, and three questions are drafted for the next visit. Every action lists its source record and can be kept, edited or undone. |
+| **Insights with receipts** | Risk flags (out of range in consecutive reports, wrong-way trends, combinations such as sugar with LDL or triglycerides with low HDL), repeat tests due and age-based screenings are computed in code, and each cites the exact results and dates. They're worded for discussion with a doctor, never as a diagnosis. |
+| **Reminders that reach you** | Web Push notifications with **Taken** and **Snooze** buttons, in each family member's language, plus visit and test notices. Adherence over 7 days and a printable doctor visit sheet. |
+| **12 Indian languages + English** | Hindi, Bengali, Marathi, Telugu, Tamil, Gujarati, Urdu (right to left), Kannada, Odia, Malayalam, Punjabi and Assamese across the interface, summaries, chat, voice, reminders and notifications. Each family member has their own language. |
 | **Two readers, one referee** | One model extracts, a *different* model re-reads the page, steered by the fields the validators found suspicious, and code arbitrates. Nothing is saved until a person confirms it on a side-by-side review screen. |
 | **AI reads, code decides** | High, Low and Critical flags, unit conversions, LOINC and ICD-10 codes and medicine schedules come from a curated knowledge base (60 lab tests, 213 Indian drug brands, dosage shorthand such as `1-0-1 AC`), never from the model. |
 | **Measured, not claimed** | Re-scorable eval suite: **100% of 477 fields** correct with verification, 99.8% in a single pass, across printed, handwritten, phone-photo, PDF and four Indian scripts. See [`eval/report.md`](eval/report.md). |
 | **Safe by construction** | Summaries can only use numbers that are in the record; dosing advice and diagnoses are blocked; critical values and emergency symptoms escalate to a doctor or 112. Models never see names, phone numbers or ABHA IDs. |
 | **ABDM-native** | Every document becomes an NRCeS-profile FHIR R4 bundle, readable in the app with the JSON one click away. Includes a mock ABHA link with OTP, a consent artefact and import from a mock Health Information Provider. |
-| **Zero-cost production** | Runs live on free tiers only: Render (Docker), a private GitHub repo as the durable datastore, Gmail through Apps Script for codes and alerts, and GitHub Actions for gated deploys and the daily reminder job. |
+| **Zero-cost production** | Runs live on the AWS free tier: one EC2 instance with Docker, Caddy for HTTPS and a free DuckDNS name, always on so reminders fire on time. A Render blueprint (free) is included as an alternative. |
 
 <table>
   <tr>
@@ -55,7 +67,11 @@ flowchart LR
   E --> F[Verify<br/>model 2] --> G[Human review] --> H[(Unified record)]
   H --> I[FHIR R4 bundles]
   H --> J[Summaries and cited chat]
-  H --> K[Reminders and weekly email]
+  H --> K[Copilot agent]
+  K --> L[Reminders and<br/>push notifications]
+  K --> M[Follow-ups and<br/>repeat tests]
+  K --> N[Questions for<br/>the doctor]
+  H --> O[Insights, preventive<br/>steps, wellness]
 ```
 
 **Stack:** FastAPI · SQLModel · Gemini (OpenAI optional) with per-role model fallback chains · React 19 · Vite ·
@@ -79,10 +95,11 @@ git clone https://github.com/prasanthselam-arch/health-copilot.git && cd health-
 ./run.sh start     # http://localhost:5173
 ```
 
-To load a demo family with a year of records, run `backend/.venv/bin/python scripts/seed_demo.py`, then sign in as
-`demo@healthcopilot.in` with the password `demo12345`.
+To load the demo family (a father with rising sugar, a mother on thyroid and iron tablets, and a new fever
+prescription), run `cd backend && .venv/bin/python -m app.demo`, then sign in as `demo@healthcopilot.in` with the
+password `demo12345`.
 
-To deploy your own copy for free, follow [DOCUMENT.md § 6](DOCUMENT.md#6-deploying-for-free-on-render).
+To deploy your own copy on the AWS free tier (or Render), follow [DOCUMENT.md § 6](DOCUMENT.md#6-deploying-aws-the-live-site-or-render).
 
 ## Documentation
 
@@ -91,7 +108,7 @@ To deploy your own copy for free, follow [DOCUMENT.md § 6](DOCUMENT.md#6-deploy
 - [features](DOCUMENT.md#1-features-in-detail) and the [pipeline](DOCUMENT.md#2-how-the-pipeline-works);
 - [local setup](DOCUMENT.md#3-running-locally), including Docker and corporate proxies;
 - [accounts and email](DOCUMENT.md#4-accounts-email-codes-and-notifications);
-- [deployment](DOCUMENT.md#6-deploying-for-free-on-render) and [configuration](DOCUMENT.md#7-configuration-reference);
+- [deployment](DOCUMENT.md#6-deploying-aws-the-live-site-or-render) and [configuration](DOCUMENT.md#7-configuration-reference);
 - [tests](DOCUMENT.md#8-tests-and-evaluation), the [project layout](DOCUMENT.md#9-project-layout) and
   [safety and privacy](DOCUMENT.md#10-safety-privacy-and-security).
 

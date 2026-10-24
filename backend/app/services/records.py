@@ -11,7 +11,11 @@ from app.config import get_settings
 from app.fhir import mapper
 from app.models.tables import (
     AbhaSession,
+    Appointment,
     Condition,
+    CopilotAction,
+    DoseLog,
+    Reminder,
     DiagnosticReport,
     Document,
     Encounter,
@@ -55,6 +59,8 @@ def delete_patient(db: Session, patient: Patient) -> None:
     for s in db.exec(select(Summary).where(Summary.patient_id == patient.id)).all():
         db.delete(s)
     db.exec(delete(AbhaSession).where(AbhaSession.patient_id == patient.id))  # type: ignore[arg-type]
+    for model in (Reminder, DoseLog, Appointment, CopilotAction):
+        db.exec(delete(model).where(model.patient_id == patient.id))  # type: ignore[arg-type]
     db.delete(patient)
     db.commit()
 

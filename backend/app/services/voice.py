@@ -93,5 +93,5 @@ def transcribe(data: bytes, mime: str, hint: str | None = None) -> dict[str, str
         raise VoiceUnavailable("Voice input needs the Gemini provider")
     note = f"The app language is {hint}; the speaker may use a different language." if hint else ""
     r: Transcript = llm.parse("fast", TRANSCRIBE_SYSTEM, [llm.audio(data, mime.split(";")[0]), llm.text(note or "Transcribe.")],
-                              Transcript).parsed
+                              Transcript, thinking="minimal", interactive=True).parsed
     return {"text": r.text.strip(), "language": r.language.strip().lower()[:3]}

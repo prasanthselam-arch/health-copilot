@@ -15,4 +15,5 @@ rapidfuzz==3.11.0
 python-dateutil==2.9.0.post0
 fhir.resources==7.1.0
 httpx==0.28.1
+pywebpush==2.5.0
 pytest==8.3.4

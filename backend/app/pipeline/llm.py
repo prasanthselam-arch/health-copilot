@@ -8,6 +8,8 @@ import base64
 import logging
 import re
 import time
+from collections.abc import Callable
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -52,6 +54,11 @@ class LLMUnavailable(RuntimeError):
 # Models that just reported an exhausted quota or do not exist are skipped for a while, so every request does not
 # wait through the same failures before reaching a working model.
 _cooling: dict[str, float] = {}
+# The model that last answered each role is tried first, so a request does not start on a model that is overloaded.
+_last_ok: dict[str, str] = {}
+OVERLOAD_COOLDOWN_S = 45
+INTERACTIVE_TIMEOUT_MS = 20_000
+HEDGE_AFTER_S = 6
 
 
 def _cooldown_s(msg: str) -> float:
@@ -87,7 +94,8 @@ def _openai():
     return OpenAI(api_key=s.openai_api_key, http_client=http, max_retries=1)
 
 
-def _call_gemini(model: str, system: str, parts: list[Part], schema: type[T]) -> LLMResult:
+def _call_gemini(model: str, system: str, parts: list[Part], schema: type[T], thinking_level: str | None = None,
+                 timeout_ms: int | None = None) -> LLMResult:
     from google.genai import types
 
     contents: list[Any] = []
@@ -98,22 +106,24 @@ def _call_gemini(model: str, system: str, parts: list[Part], schema: type[T]) ->
             contents.append(types.Part.from_bytes(data=p["audio"], mime_type=p["mime"]))
         else:
             contents.append(p["text"])
-    thinking = None
-    level = get_settings().gemini_thinking_level
-    if level and model.startswith("gemini-3"):
-        thinking = types.ThinkingConfig(thinking_level=level)
+    default = get_settings().gemini_thinking_level
+    level = thinking_level or default
+
+    def config(level: str | None) -> Any:
+        thinking = types.ThinkingConfig(thinking_level=level) if level and model.startswith("gemini-3") else None
+        return types.GenerateContentConfig(system_instruction=system, response_mime_type="application/json",
+                                           response_json_schema=schema.model_json_schema(), temperature=0,
+                                           thinking_config=thinking,
+                                           http_options=types.HttpOptions(timeout=timeout_ms) if timeout_ms else None)
+
     t0 = time.perf_counter()
-    resp = _gemini().models.generate_content(
-        model=model,
-        contents=contents,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            response_mime_type="application/json",
-            response_json_schema=schema.model_json_schema(),
-            temperature=0,
-            thinking_config=thinking,
-        ),
-    )
+    try:
+        resp = _gemini().models.generate_content(model=model, contents=contents, config=config(level))
+    except Exception as e:
+        # Not every model accepts every level (e.g. "minimal"); fall back to the configured one on the same model.
+        if level == default or "thinking" not in str(e).lower():
+            raise
+        resp = _gemini().models.generate_content(model=model, contents=contents, config=config(default))
     ms = int((time.perf_counter() - t0) * 1000)
     if not resp.text:
         raise RuntimeError(f"empty response (finish={resp.candidates[0].finish_reason if resp.candidates else '?'})")
@@ -122,7 +132,8 @@ def _call_gemini(model: str, system: str, parts: list[Part], schema: type[T]) ->
     return LLMResult(parsed, model, ms, (um.prompt_token_count or 0) if um else 0, (um.candidates_token_count or 0) if um else 0)
 
 
-def _call_openai(model: str, system: str, parts: list[Part], schema: type[T]) -> LLMResult:
+def _call_openai(model: str, system: str, parts: list[Part], schema: type[T], thinking_level: str | None = None,
+                 timeout_ms: int | None = None) -> LLMResult:
     content: list[dict[str, Any]] = []
     for p in parts:
         if "audio" in p:
@@ -152,22 +163,32 @@ def _call_openai(model: str, system: str, parts: list[Part], schema: type[T]) ->
     return LLMResult(msg.parsed, model, ms, u.prompt_tokens if u else 0, u.completion_tokens if u else 0)
 
 
-def parse(role: str, system: str, parts: list[Part] | str, schema: type[T], attempts_per_model: int = 2) -> LLMResult:
-    """Run a structured call for `role` (extract | verify | fast), falling back across models."""
+def parse(role: str, system: str, parts: list[Part] | str, schema: type[T], attempts_per_model: int = 2,
+          thinking: str | None = None, interactive: bool = False) -> LLMResult:
+    """Run a structured call for `role` (extract | verify | fast), falling back across models.
+
+    `thinking` overrides the Gemini 3 thinking level for this call ("minimal" for quick voice replies).
+    `interactive` is for someone waiting on the answer (chat, voice): see `_hedged`; overloaded models are then
+    skipped for a while."""
     s = get_settings()
     if isinstance(parts, str):
         parts = [text(parts)]
     call = _call_gemini if s.llm_provider == "gemini" else _call_openai
     errors: list[str] = []
     chain = s.models_for(role)
+    if _last_ok.get(role) in chain:
+        chain = [_last_ok[role], *[m for m in chain if m != _last_ok[role]]]
     now = time.monotonic()
     ready = [m for m in chain if _cooling.get(m, 0) <= now] or chain
+    if interactive:
+        return _hedged(role, ready, lambda m: call(m, system, parts, schema, thinking, INTERACTIVE_TIMEOUT_MS), schema)
     for model in ready:
         for attempt in range(attempts_per_model):
             try:
-                r = call(model, system, parts, schema)
+                r = call(model, system, parts, schema, thinking)
                 log.info("llm %s %s %s %dms in=%d out=%d", role, model, schema.__name__, r.ms, r.input_tokens, r.output_tokens)
                 _cooling.pop(model, None)
+                _last_ok[role] = model
                 return r
             except LLMUnavailable:
                 raise
@@ -184,4 +205,51 @@ def parse(role: str, system: str, parts: list[Part] | str, schema: type[T], atte
                     _cooling[model] = time.monotonic() + _cooldown_s(msg)
                     break
                 time.sleep(2 + 3 * attempt)
+    raise LLMUnavailable("All models failed: " + " | ".join(errors[-4:]))
+
+
+def _hedged(role: str, models: list[str], run: Callable[[str], LLMResult], schema: type[BaseModel]) -> LLMResult:
+    """For someone waiting: one try per model, the next model starts at once when one fails, and also when one is
+    slow (after HEDGE_AFTER_S), with at most two in flight. The first answer wins."""
+    queue = list(models)
+    pending: dict[Future[LLMResult], str] = {}
+    errors: list[str] = []
+    pool = ThreadPoolExecutor(max_workers=len(models) or 1)
+
+    def launch() -> None:
+        if queue and len(pending) < 2:
+            m = queue.pop(0)
+            pending[pool.submit(run, m)] = m
+
+    launch()
+    try:
+        while pending:
+            done, _ = wait(pending, timeout=HEDGE_AFTER_S, return_when=FIRST_COMPLETED)
+            if not done:
+                launch()
+                continue
+            for f in done:
+                model = pending.pop(f)
+                try:
+                    r = f.result()
+                except LLMUnavailable:
+                    raise
+                except Exception as e:  # noqa: BLE001 - provider SDKs raise many error types
+                    msg = str(e)
+                    errors.append(f"{model}: {msg[:160]}")
+                    log.warning("llm %s %s failed: %s", role, model, msg[:200])
+                    if "404" in msg or "NOT_FOUND" in msg or "free_tier" in msg or "quota" in msg.lower():
+                        _cooling[model] = time.monotonic() + _cooldown_s(msg)
+                    elif any(k in msg for k in ("503", "UNAVAILABLE", "overloaded", "504", "DEADLINE", "timed out", "timeout")):
+                        _cooling[model] = time.monotonic() + OVERLOAD_COOLDOWN_S
+                    launch()
+                    continue
+                log.info("llm %s %s %s %dms in=%d out=%d", role, model, schema.__name__, r.ms, r.input_tokens, r.output_tokens)
+                _cooling.pop(model, None)
+                _last_ok[role] = model
+                for slow in pending.values():  # lost the race: skip it for a while
+                    _cooling[slow] = time.monotonic() + OVERLOAD_COOLDOWN_S
+                return r
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     raise LLMUnavailable("All models failed: " + " | ".join(errors[-4:]))

@@ -115,14 +115,15 @@ export default function Review() {
 
   const confirm = useMutation({
     mutationFn: (p: ReviewPayload) => api.confirm(id, p),
-    onSuccess: async () => {
+    onSuccess: async (res) => {
       await Promise.all(
         [['document', id], ['documents', patient.id], ['profile', patient.id], ['timeline', patient.id], ['trends', patient.id], ['medications', patient.id]].map(
           (k) => qc.invalidateQueries({ queryKey: k }),
         ),
       )
-      for (const k of [['patientSummary', patient.id], ['docSummary', id], ['docFhir', id]]) qc.removeQueries({ queryKey: k })
-      nav(`/documents/${id}`)
+      for (const k of [['patientSummary', patient.id], ['docSummary', id], ['docFhir', id], ['copilot'], ['today'], ['care'], ['reminders']])
+        qc.removeQueries({ queryKey: k })
+      nav(`/documents/${id}`, { state: { copilot: res.copilot ?? [] } })
     },
   })
   const retry = useMutation({

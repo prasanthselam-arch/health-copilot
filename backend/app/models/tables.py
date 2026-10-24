@@ -239,3 +239,82 @@ class AbhaSession(SQLModel, table=True):
     otp: str
     created_at: datetime = Field(default_factory=utcnow)
     verified: bool = False
+
+
+class Reminder(SQLModel, table=True):
+    """A repeating medicine reminder, scheduled by the copilot from a prescription or added by the user.
+
+    `slots` holds the daily dose times in IST: [{"time": "08:00", "slot": "morning", "amount": "1 tablet"}].
+    """
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    patient_id: str = Field(foreign_key="patient.id", index=True)
+    medication_id: str | None = Field(default=None, index=True)
+    title: str
+    detail: str | None = None  # e.g. "after food"
+    slots: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    weekdays: list[int] | None = Field(default=None, sa_column=Column(JSON))  # 0 = Monday; None = every day
+    start_date: date
+    end_date: date | None = None  # last day of the course, inclusive
+    status: str = "active"  # active | paused | ended | removed
+    source: str = "copilot"  # copilot | user
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class DoseLog(SQLModel, table=True):
+    """What happened to one scheduled dose: taken, skipped or snoozed."""
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    reminder_id: str = Field(index=True)
+    patient_id: str = Field(index=True)
+    day: date = Field(index=True)
+    time: str  # the slot's scheduled time, HH:MM
+    status: str  # taken | skipped | snoozed
+    snooze_until: datetime | None = None
+    acted_at: datetime = Field(default_factory=utcnow)
+
+
+class Appointment(SQLModel, table=True):
+    """A doctor visit or a test to repeat, found in a record by the copilot or added by the user."""
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    patient_id: str = Field(foreign_key="patient.id", index=True)
+    kind: str = "visit"  # visit | test
+    title: str
+    due_date: date
+    time: str | None = None  # HH:MM
+    doctor: str | None = None
+    facility: str | None = None
+    notes: str | None = None
+    status: str = "upcoming"  # upcoming | done | cancelled
+    source: str = "user"  # user | copilot
+    source_text: str | None = None  # the words in the record it came from, e.g. "Review after 3 months"
+    document_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class CopilotAction(SQLModel, table=True):
+    """Something the copilot did or proposes, shown in its activity feed so the user can keep, edit or reject it."""
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    patient_id: str = Field(foreign_key="patient.id", index=True)
+    key: str = Field(index=True)  # dedupe key, e.g. reminders:<document id> or test:hba1c:2026-10-01
+    kind: str  # reminders | reminders_stopped | appointment | test_due | overdue | questions
+    title: str
+    detail: str | None = None
+    items: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    ref_ids: list[str] = Field(default_factory=list, sa_column=Column(JSON))  # reminders or appointments it created
+    document_id: str | None = None
+    status: str = "done"  # done (applied, can be undone) | proposed | kept | accepted | rejected | resolved | superseded
+    created_at: datetime = Field(default_factory=utcnow)
+    resolved_at: datetime | None = None
+
+
+class PushSubscription(SQLModel, table=True):
+    """A browser or phone that asked for reminder notifications (Web Push)."""
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    account_id: str = Field(index=True)
+    endpoint: str = Field(index=True, unique=True)
+    keys: dict[str, Any] = Field(sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utcnow)

@@ -63,7 +63,9 @@ export default function Chat() {
   const end = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLTextAreaElement>(null)
   const [audioMode, setAudioMode] = useState(() => stored('hc.chat.audio') === '1')
-  const [voiceLang, setVoiceLang] = useState(() => stored('hc.chat.voiceLang') ?? lang)
+  // Each person speaks their own language: a parent's profile set to Telugu listens for Telugu.
+  const voiceKey = `hc.chat.voiceLang.${patient.id}`
+  const [voiceLang, setVoiceLang] = useState(() => stored(voiceKey) ?? patient.preferred_language ?? lang)
   const lastByVoice = useRef(false)
   const audioModeRef = useRef(audioMode)
   useEffect(() => {
@@ -71,7 +73,7 @@ export default function Chat() {
     localStorage.setItem('hc.chat.audio', audioMode ? '1' : '0')
     if (!audioMode) stopSpeaking()
   }, [audioMode])
-  useEffect(() => localStorage.setItem('hc.chat.voiceLang', voiceLang), [voiceLang])
+  useEffect(() => localStorage.setItem(voiceKey, voiceLang), [voiceKey, voiceLang])
   useEffect(() => () => stopSpeaking(), [])
 
   const dictation = useDictation({
@@ -88,17 +90,19 @@ export default function Chat() {
   })
 
   const ask = useMutation({
-    mutationFn: ({ text, history }: { text: string; history: Msg[] }) =>
+    mutationFn: ({ text, history, voice }: { text: string; history: Msg[]; voice?: boolean }) =>
       api.chat(
         patient.id,
         text,
         history.slice(-8).map((m) => ({ role: m.role, content: m.content })),
         lang,
+        voice,
       ),
-    onSuccess: (reply) => {
+    onSuccess: (reply, { voice }) => {
       const at = Date.now()
       setMessages((m) => [...m, { role: 'assistant', content: reply.answer, reply, at }])
-      if (audioModeRef.current)
+      // A spoken question gets a spoken answer, even outside audio mode.
+      if (audioModeRef.current || voice)
         void speak(`msg-${at}`, markdownToText(reply.answer), reply.reply_language || lang, () => {
           // Hands-free: after reading the answer to a spoken question, listen for the next one.
           if (audioModeRef.current && lastByVoice.current) dictation.start()
@@ -124,13 +128,13 @@ export default function Chat() {
     const voice = byVoice || (lastByVoice.current && q === input.trim())
     lastByVoice.current = voice
     stopSpeaking()
-    ask.mutate({ text: q, history: messages })
+    ask.mutate({ text: q, history: messages, voice })
     setMessages((m) => [...m, { role: 'user', content: q, at: Date.now(), voice }])
     setInput('')
   }
   const retry = () => {
     const last = messages[messages.length - 1]
-    if (last?.role === 'user') ask.mutate({ text: last.content, history: messages.slice(0, -1) })
+    if (last?.role === 'user') ask.mutate({ text: last.content, history: messages.slice(0, -1), voice: last.voice })
   }
   const newChat = () => {
     stopSpeaking()

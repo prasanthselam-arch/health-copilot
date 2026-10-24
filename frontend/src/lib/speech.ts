@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 
 const LOCALES: Record<string, string> = {
   en: 'en-IN', hi: 'hi-IN', te: 'te-IN', ta: 'ta-IN', kn: 'kn-IN', ml: 'ml-IN', mr: 'mr-IN', bn: 'bn-IN',
-  gu: 'gu-IN', pa: 'pa-IN', or: 'or-IN', ur: 'ur-IN', ne: 'ne-NP', si: 'si-LK', ar: 'ar-SA', es: 'es-ES',
+  gu: 'gu-IN', pa: 'pa-IN', or: 'or-IN', ur: 'ur-IN', as: 'as-IN', ne: 'ne-NP', si: 'si-LK', ar: 'ar-SA', es: 'es-ES',
   fr: 'fr-FR', de: 'de-DE',
 }
 export const speechLocale = (lang: string) => LOCALES[lang] ?? lang
@@ -70,16 +70,46 @@ function pickVoice(list: SpeechSynthesisVoice[], lang: string) {
   return list.find((v) => norm(v) === want) ?? list.find((v) => norm(v).split('-')[0] === lang) ?? null
 }
 
-/** Browsers cut long utterances short (Chrome stops after ~15 s), so speak sentence by sentence. */
-function chunks(text: string) {
-  const parts = text.match(/[^.!?।\n]+[.!?।]*\s*/g) ?? [text]
+/**
+ * Sentence-sized pieces. Browsers cut long utterances short (Chrome stops after ~15 s), and for server audio a short
+ * first piece means the answer starts playing sooner while the rest is generated.
+ */
+function chunks(text: string, first = 220, rest = 220) {
+  const parts = text.match(/[^.!?।۔\n]+[.!?।۔]*\s*/g) ?? [text]
   const out: string[] = []
   for (const p of parts) {
     const last = out[out.length - 1]
-    if (last && last.length + p.length < 220) out[out.length - 1] = last + p
+    if (last && last.length + p.length < (out.length === 1 ? first : rest)) out[out.length - 1] = last + p
     else out.push(p)
   }
   return out.map((c) => c.trim()).filter(Boolean)
+}
+
+async function serverAudio(text: string, lang: string): Promise<Blob> {
+  const res = await fetch('/api/voice/speak', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, lang }),
+  })
+  if (!res.ok) throw new Error(String(res.status))
+  return res.blob()
+}
+
+function play(blob: Blob, isCurrent: () => boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob)
+    const el = new Audio(url)
+    audio = el
+    const done = (ok: boolean) => {
+      URL.revokeObjectURL(url)
+      if (ok) resolve()
+      else reject(new Error('playback'))
+    }
+    el.onended = () => done(true)
+    el.onerror = () => done(false)
+    if (!isCurrent()) return done(true)
+    el.play().catch(() => done(false))
+  })
 }
 
 /**
@@ -116,26 +146,28 @@ export async function speak(id: string, text: string, lang: string, onEnd?: () =
     return
   }
 
+  // Server voice: the first sentence is requested on its own so playback starts quickly; the next pieces are
+  // generated while earlier ones play.
+  const parts = chunks(text, 140, 400)
+  const pending: (Promise<Blob> | undefined)[] = []
+  const fetchPart = (i: number) => {
+    if (i < parts.length && !pending[i]) pending[i] = serverAudio(parts[i], lang)
+    pending[i]?.catch(() => undefined)
+  }
+  fetchPart(0)
+  fetchPart(1)
   try {
-    const res = await fetch('/api/voice/speak', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang }),
-    })
-    if (!res.ok) throw new Error(String(res.status))
-    const url = URL.createObjectURL(await res.blob())
-    if (mine !== run) return URL.revokeObjectURL(url)
-    audio = new Audio(url)
-    audio.onended = () => {
-      URL.revokeObjectURL(url)
-      finish()
+    for (let i = 0; i < parts.length; i++) {
+      fetchPart(i)
+      const blob = await pending[i]!
+      if (mine !== run) return
+      fetchPart(i + 1)
+      fetchPart(i + 2)
+      if (i === 0) set({ loading: false })
+      await play(blob, () => mine === run)
+      if (mine !== run) return
     }
-    audio.onerror = () => {
-      URL.revokeObjectURL(url)
-      if (mine === run) set({ id: null, loading: false, error: 'voice_error' })
-    }
-    await audio.play()
-    if (mine === run) set({ loading: false })
+    finish()
   } catch {
     if (mine === run) set({ id: null, loading: false, error: 'voice_error' })
   }
@@ -160,6 +192,7 @@ interface Recognition extends EventTarget {
   onend: (() => void) | null
 }
 type RecognitionCtor = new () => Recognition
+const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
 
 const NativeRecognition: RecognitionCtor | undefined =
   typeof window === 'undefined'
@@ -206,12 +239,15 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
     const parts: Blob[] = []
     rec.ondataavailable = (e) => e.data.size && parts.push(e.data)
 
-    // Stop by itself after ~1.8 s of silence once the user has spoken, or after 45 s.
+    // Stop by itself after a pause once the user has spoken, or after 45 s. The speech threshold adapts to the
+    // room: it is set a little above the background noise measured in the first moments.
     const ctx = new AudioContext()
     const analyser = ctx.createAnalyser()
     ctx.createMediaStreamSource(stream).connect(analyser)
     const buf = new Uint8Array(analyser.fftSize)
     let spoke = false
+    let voiced = 0
+    let floor = 0.01
     let quietSince = performance.now()
     const started = performance.now()
     const timer = setInterval(() => {
@@ -221,12 +257,17 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
       const rms = Math.sqrt(sum / buf.length)
       setLevel(Math.min(1, rms * 6))
       const now = performance.now()
-      if (rms > 0.04) {
-        spoke = true
+      const threshold = Math.min(0.08, Math.max(0.02, floor * 2.5))
+      if (rms > threshold) {
+        voiced++
         quietSince = now
+        if (voiced >= 2) spoke = true // two loud frames in a row, so a click or a cough doesn't count
+      } else {
+        voiced = 0
+        floor = floor * 0.9 + rms * 0.1
       }
-      if ((spoke && now - quietSince > 1800) || now - started > 45_000 || (!spoke && now - started > 8000)) stop()
-    }, 100)
+      if ((spoke && now - quietSince > 1300) || now - started > 45_000 || (!spoke && now - started > 8000)) stop()
+    }, 80)
 
     let stopped = false
     const stop = () => {
@@ -274,18 +315,29 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
     const rec = new NativeRecognition()
     rec.lang = speechLocale(lang)
     rec.interimResults = true
-    rec.continuous = false
+    // Continuous mode lets slow speakers pause mid-sentence; we end the turn ourselves. Android's recogniser repeats
+    // earlier text in continuous mode, so it keeps the single-utterance mode there.
+    rec.continuous = !ANDROID
     rec.maxAlternatives = 1
     let finalText = ''
+    let interimText = ''
     let failed = false
+    let endTimer: ReturnType<typeof setTimeout> | undefined
+    const silence = setTimeout(() => !finalText && !interimText && rec.stop(), 8000)
     rec.onresult = (e) => {
+      let fin = ''
       let interim = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      for (let i = 0; i < e.results.length; i++) {
         const r = e.results[i]
-        if (r.isFinal) finalText += r[0].transcript
+        if (r.isFinal) fin += r[0].transcript
         else interim += r[0].transcript
       }
-      cbs.current.onInterim((finalText + interim).trim())
+      finalText = fin
+      interimText = interim
+      cbs.current.onInterim((fin + interim).trim())
+      // End the turn soon after a finished phrase, a little later while words are still arriving.
+      clearTimeout(endTimer)
+      endTimer = setTimeout(() => rec.stop(), interim ? 1600 : 900)
     }
     rec.onerror = (e) => {
       failed = true
@@ -300,8 +352,11 @@ export function useDictation({ lang, onInterim, onFinal }: { lang: string; onInt
       } else if (e.error !== 'aborted') setError('voice_error')
     }
     rec.onend = () => {
+      clearTimeout(endTimer)
+      clearTimeout(silence)
       setStatus((s) => (s === 'listening' ? 'idle' : s))
-      if (!failed && finalText.trim()) cbs.current.onFinal(finalText.trim())
+      const heard = (finalText + interimText).trim()
+      if (!failed && heard) cbs.current.onFinal(heard)
     }
     stopRef.current = () => rec.stop()
     try {

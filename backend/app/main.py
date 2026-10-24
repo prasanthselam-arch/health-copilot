@@ -6,12 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, documents, insights, internal, patients, voice
+from app.api import auth, care, documents, insights, internal, patients, voice
 from app.config import get_settings
 from app.db import init_db
 from app.knowledge import drugs, icd10, labs
 from app.pipeline import runner
-from app.services import datastore
+from app.services import datastore, scheduler
 from app.services.safety import DISCLAIMER, LANGUAGES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -25,17 +25,21 @@ async def lifespan(_: FastAPI):
     init_db()
     runner.resume_pending()
     datastore.start()
+    if get_settings().scheduler:
+        scheduler.start()
     yield
+    scheduler.stop()
     datastore.stop()
 
 
-app = FastAPI(title="Personal Health Copilot API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Personal Health Copilot API", version="3.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=get_settings().cors_origins, allow_methods=["*"], allow_headers=["*"])
 app.include_router(auth.router)
 app.include_router(patients.router)
 app.include_router(documents.router)
 app.include_router(insights.router)
 app.include_router(voice.router)
+app.include_router(care.router)
 app.include_router(internal.router)
 
 

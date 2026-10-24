@@ -3,7 +3,8 @@ import { ArrowLeft, ExternalLink, FileJson, Pencil, RotateCcw, Trash2 } from 'lu
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FhirBundleView } from '@/components/FhirBundleView'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { CopilotDidBanner } from '@/components/care'
 import { FlagBadge, MedSchedule } from '@/components/medical'
 import { PageViewer } from '@/components/PageViewer'
 import { SummaryView } from '@/components/SummaryView'
@@ -22,6 +23,7 @@ export default function DocumentView() {
   const patient = useActivePatient()
   const qc = useQueryClient()
   const nav = useNavigate()
+  const location = useLocation()
   const [tab, setTab] = useState<Tab>('summary')
 
   const doc = useQuery({ queryKey: ['document', id], queryFn: () => api.document(id) })
@@ -57,6 +59,7 @@ export default function DocumentView() {
   if (doc.error) return <ErrorNote error={doc.error} onRetry={() => doc.refetch()} />
   const d = doc.data!
   if (!confirmed) return <Navigate to={`/documents/${id}/review`} replace />
+  const justDid = (location.state as { copilot?: { id: string; kind: string; title: string }[] } | null)?.copilot ?? []
 
   const tabs: { value: Tab; label: string }[] = [
     { value: 'summary', label: t('docview.summary') },
@@ -103,6 +106,8 @@ export default function DocumentView() {
           </div>
         </div>
       </div>
+
+      <CopilotDidBanner actions={justDid} />
 
       <Tabs value={tab} onChange={setTab} items={tabs} />
 

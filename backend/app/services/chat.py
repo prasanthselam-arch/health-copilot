@@ -34,6 +34,11 @@ Rules:
 - If the records do not contain the answer, say so plainly. You may add brief, well-established general health information, clearly labelled as general information.
 - Never diagnose. Never tell the user to start, stop, skip or change a medicine or dose; for such questions explain what the record says and advise asking their doctor.
 - For worrying symptoms, advise contacting a doctor; for emergency symptoms, advise calling 112.
+- `reminders` are the user's daily dose times (India time; morning before 12:00, night after 17:00). For questions like
+  "which medicines tonight?" list them with their times and cite each `medication_id`. `now` is the current time.
+- `appointments`, `tests_due` and `care_alerts` are computed by the app from these records. Use them for "when is my
+  next visit / test" and "is anything worrying" questions, citing the `result_ids` they list; present alerts as things
+  to discuss with the doctor, never as a diagnosis.
 - Be warm, calm and brief. Keep drug names, numbers and units unchanged.
 Language:
 - Work out the language of the USER QUESTION and reply in that language, written in its own script. Users often type
@@ -56,6 +61,14 @@ Formatting (Markdown):
 - follow_up_questions: 2-3 natural next questions about these records, phrased as the user would ask them.
 """
 
+VOICE_RULES = """
+SPOKEN QUESTION: the user asked by voice and the answer will be read aloud to them, often an elderly person.
+- Answer in 1-3 short, simple spoken sentences (under 60 words). Answer the question directly in the first sentence.
+- Plain speech only: no Markdown, bullets, tables or bold. Say times the way people speak them in that language
+  (for example "9 at night" rather than "21:00"). Say each medicine with its dose and when to take it.
+- Speech recognition may have misheard medicine or test names; match them to the closest name in the records.
+"""
+
 
 def _records(db: Session, patient: Patient) -> dict[str, Any]:
     docs = db.exec(select(Document).where(Document.patient_id == patient.id, Document.status == "confirmed")).all()
@@ -70,6 +83,31 @@ def _records(db: Session, patient: Patient) -> dict[str, Any]:
         "conditions": [F.cond_fact(c) for c in conds],
         "medications": [F.med_fact(m) for m in meds],
         "results": [F.obs_fact(o) for o in obs],
+        **_care_records(db, patient),
+    }
+
+
+def _care_records(db: Session, patient: Patient) -> dict[str, Any]:
+    """Reminder times, upcoming visits and computed alerts, so 'tonight's medicines' or 'when is my test due' are grounded."""
+    from app.models.tables import Appointment, Reminder
+    from app.services import care
+    from app.services.reminders import now_ist
+
+    now = now_ist()
+    rems = db.exec(select(Reminder).where(Reminder.patient_id == patient.id, Reminder.status == "active")).all()
+    appts = db.exec(select(Appointment).where(Appointment.patient_id == patient.id, Appointment.status == "upcoming")).all()
+    prof = care.build_profile(db, patient)
+    return {
+        "now": now.strftime("%Y-%m-%d %H:%M (%A), India time"),
+        "reminders": [{"medication_id": r.medication_id, "medicine": r.title, "when": r.detail,
+                       "times": [f"{s['time']} {s.get('amount') or ''}".strip() for s in r.slots],
+                       "until": r.end_date.isoformat() if r.end_date else None} for r in rems],
+        "appointments": [{"id": a.id, "kind": a.kind, "title": a.title, "due": a.due_date.isoformat(),
+                          "overdue": a.due_date < now.date()} for a in appts],
+        "care_alerts": [{"title": i["title"], "detail": i["body"], "level": i["level"], "result_ids": [e["id"] for e in i["evidence"]]}
+                        for i in care.insights(prof)[:8]],
+        "tests_due": [{"test": i["title"], "status": i["status"], "due": i["due_date"]}
+                      for i in care.preventive(prof, list(appts), now.date()) if i["status"] in ("overdue", "due_soon", "not_done")][:6],
     }
 
 
@@ -84,17 +122,31 @@ def _label_index(db: Session, patient: Patient) -> dict[str, dict[str, Any]]:
         idx[m.id] = {"kind": "medication", "label": f"{m.name} {m.strength or ''}".strip(), "date": m.authored_on, "document_id": m.document_id}
     for c in db.exec(select(Condition).where(Condition.patient_id == patient.id)).all():
         idx[c.id] = {"kind": "condition", "label": c.name, "date": c.recorded_date, "document_id": c.document_id}
+    from app.models.tables import Appointment
+
+    for a in db.exec(select(Appointment).where(Appointment.patient_id == patient.id)).all():
+        idx[a.id] = {"kind": "appointment", "label": a.title, "date": a.due_date, "document_id": a.document_id}
     return idx
 
 
-def ask(db: Session, patient: Patient, message: str, history: list[dict[str, str]], lang: str = "en") -> dict[str, Any]:
+def ask(db: Session, patient: Patient, message: str, history: list[dict[str, str]], lang: str = "en",
+        voice: bool = False) -> dict[str, Any]:
     records = _records(db, patient)
     convo = "\n".join(f"{h['role'].upper()}: {h['content']}" for h in history[-6:])
-    prompt = f"RECORDS:\n{json.dumps(records, ensure_ascii=False, default=str)}\n\nCONVERSATION SO FAR:\n{convo}\n\nUSER QUESTION: {message}"
-    system = CHAT_SYSTEM.format(language=LANGUAGES.get(lang, "English"))
-    r: ChatAnswer = llm.parse("fast", system, prompt, ChatAnswer).parsed
-    safety = check_text(r.answer)
-    answer = r.answer if safety.passed else redact(r.answer)
+    data = json.dumps(records, ensure_ascii=False, default=str, separators=(",", ":"))
+    prompt = f"RECORDS:\n{data}\n\nCONVERSATION SO FAR:\n{convo}\n\nUSER QUESTION: {message}"
+    system = CHAT_SYSTEM.format(language=LANGUAGES.get(lang, "English")) + (VOICE_RULES if voice else "")
+    try:
+        r: ChatAnswer = llm.parse("fast", system, prompt, ChatAnswer, thinking="minimal" if voice else None,
+                                 interactive=True).parsed
+    except Exception:
+        fallback = _quick_answer(db, patient, message, lang)
+        if fallback is None:
+            raise
+        return fallback
+    text = _RAW_IDS.sub("", r.answer).strip()
+    safety = check_text(text)
+    answer = text if safety.passed else redact(text)
     reply_lang = reply_language(answer, r.reply_language)
     idx = _label_index(db, patient)
     citations = []
@@ -120,6 +172,43 @@ def ask(db: Session, patient: Patient, message: str, history: list[dict[str, str
     }
 
 
+# Record ids the model sometimes writes into the prose ("[3a3ddba0-…, …]"); the app shows citations as cards instead.
+_RAW_IDS = re.compile(r"\s*[\[(](?:\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*,?)+[\])]", re.I)
+
+
+def _quick_answer(db: Session, patient: Patient, message: str, lang: str) -> dict[str, Any] | None:
+    """When no model is available: answer "which medicines tonight/today?" from the reminder schedule."""
+    from app.services import quick_answers as Q
+
+    slot = Q.schedule_question(message)
+    if not slot:
+        return None
+    out_lang = reply_language(message, patient.preferred_language or lang)
+    if out_lang == "en" and not any(w in message.lower() for w in ("medicine", "medication", "tablet", "pill", "dose", "meds")):
+        out_lang = patient.preferred_language or lang  # an Indian language typed in English letters
+    if out_lang not in Q.TEXT:
+        out_lang = "en"
+    a = Q.schedule_answer(db, patient, slot, out_lang)
+    idx = _label_index(db, patient)
+    citations = [{"id": i, **idx[i], "date": idx[i]["date"].isoformat() if idx[i]["date"] else None}
+                 for i in a["medication_ids"] if i in idx]
+    return {
+        "answer": a["answer"],
+        "citations": citations,
+        "results": [],
+        "medications": _latest(_cited(db, MedicationRequest, [c["id"] for c in citations]),
+                               lambda m: ((m["generic"] or m["name"]).lower(), (m["strength"] or "").replace(" ", "").lower()), "authored_on"),
+        "follow_ups": [],
+        "reply_language": out_lang,
+        "understood_question": None,
+        "answered_from_records": True,
+        "suggest_doctor": False,
+        "emergency_notice": EMERGENCY_NOTICE.get(out_lang, EMERGENCY_NOTICE["en"]) if is_emergency(message) else None,
+        "safety": {"passed": True, "violations": []},
+        "quick": True,
+    }
+
+
 # Script of each Unicode block -> the language it most likely is when the model's own label is missing or wrong.
 _SCRIPTS = [((0x0900, 0x097F), "deva", "hi"), ((0x0980, 0x09FF), "beng", "bn"), ((0x0A00, 0x0A7F), "guru", "pa"),
             ((0x0A80, 0x0AFF), "gujr", "gu"), ((0x0B00, 0x0B7F), "orya", "or"), ((0x0B80, 0x0BFF), "taml", "ta"),
@@ -130,7 +219,7 @@ _LANG_SCRIPT = {"hi": "deva", "mr": "deva", "ne": "deva", "sa": "deva", "bn": "b
                 "ar": "arab", "fa": "arab", "si": "sinh"}
 _NAMES = {"english": "en", "hindi": "hi", "telugu": "te", "tamil": "ta", "kannada": "kn", "malayalam": "ml",
           "marathi": "mr", "bengali": "bn", "bangla": "bn", "gujarati": "gu", "punjabi": "pa", "odia": "or", "oriya": "or",
-          "urdu": "ur", "arabic": "ar", "nepali": "ne"}
+          "urdu": "ur", "assamese": "as", "arabic": "ar", "nepali": "ne"}
 
 
 def _script(text: str) -> str | None:
