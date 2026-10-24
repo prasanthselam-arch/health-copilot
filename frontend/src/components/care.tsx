@@ -121,7 +121,7 @@ export function DoseRow({ d, showPatient }: { d: Dose; showPatient?: boolean }) 
         </p>
       </div>
       <div className="justify-self-end">{d.status !== 'pending' && <DoseStatusBadge d={d} />}</div>
-      <div className="col-span-2 col-start-2 sm:col-span-1 sm:col-start-auto sm:justify-self-end">
+      <div className="col-span-3 sm:col-span-1 sm:justify-self-end">
         <DoseActions d={d} />
       </div>
     </li>
