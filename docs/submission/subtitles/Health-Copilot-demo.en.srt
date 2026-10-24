@@ -1,0 +1,249 @@
+1
+00:00:00,400 --> 00:00:02,413
+Hi, we're team hack masters.
+
+2
+00:00:02,463 --> 00:00:08,013
+Health Copilot turns a family's paper records into a verified health record,
+
+3
+00:00:08,063 --> 00:00:11,182
+and then guides them between doctor visits.
+
+4
+00:00:11,232 --> 00:00:16,045
+It answers from their own records, reminds them at the right time,
+
+5
+00:00:16,095 --> 00:00:21,350
+spots trends and risks, and acts on its own, while they stay in control.
+
+6
+00:00:24,667 --> 00:00:29,147
+Understanding a report is not the same as managing your health.
+
+7
+00:00:29,197 --> 00:00:32,095
+People forget medicines, miss follow-ups,
+
+8
+00:00:32,145 --> 00:00:36,841
+don't repeat tests on time, and don't know what to ask the doctor.
+
+9
+00:00:36,891 --> 00:00:42,018
+In Indian families, one person often carries this for their parents too,
+
+10
+00:00:42,068 --> 00:00:44,607
+across many documents and languages.
+
+11
+00:00:47,733 --> 00:00:49,410
+This is Ravi's account.
+
+12
+00:00:49,460 --> 00:00:52,562
+He also looks after his father and mother.
+
+13
+00:00:52,612 --> 00:00:56,164
+The home screen shows today's medicines for him,
+
+14
+00:00:56,214 --> 00:01:01,643
+with Taken and Snooze buttons, and what the copilot found in his records.
+
+15
+00:01:04,267 --> 00:01:05,187
+Scenario one:
+
+16
+00:01:05,237 --> 00:01:06,606
+a new prescription.
+
+17
+00:01:06,656 --> 00:01:09,816
+Ravi saw a doctor for fever three days ago.
+
+18
+00:01:09,866 --> 00:01:15,938
+When he confirmed the prescription, the copilot scheduled the reminders by itself:
+
+19
+00:01:15,988 --> 00:01:21,164
+the antibiotic once a day for five days, the antacid before breakfast,
+
+20
+00:01:21,214 --> 00:01:26,689
+and no reminder for the fever tablet, because it's only taken when needed.
+
+21
+00:01:26,739 --> 00:01:30,496
+It also drafted three questions for his next visit.
+
+22
+00:01:30,546 --> 00:01:33,707
+Every action can be kept, edited or undone.
+
+23
+00:01:38,133 --> 00:01:43,544
+Reminders cover the whole family's day, at each prescription's own times.
+
+24
+00:01:43,594 --> 00:01:47,658
+Mark a dose as taken, or snooze it for fifteen minutes.
+
+25
+00:01:47,708 --> 00:01:52,519
+A course ends by itself, so the antibiotic stops after five days.
+
+26
+00:01:52,569 --> 00:01:57,232
+Follow-up visits and repeat tests come from the doctor's notes,
+
+27
+00:01:57,282 --> 00:02:02,243
+and push notifications reach the phone even when the app is closed.
+
+28
+00:02:05,767 --> 00:02:06,874
+Scenario two:
+
+29
+00:02:06,924 --> 00:02:08,832
+Ravi's father, Ramesh.
+
+30
+00:02:08,882 --> 00:02:14,617
+His HbA1c was above the range in three reports, and still rising:
+
+31
+00:02:14,667 --> 00:02:17,465
+7.4, then 7.9, then 8.6 percent.
+
+32
+00:02:17,515 --> 00:02:22,894
+The copilot flags the trend, shows each result with its date,
+
+33
+00:02:22,944 --> 00:02:26,187
+and links to the report it came from.
+
+34
+00:02:26,237 --> 00:02:32,684
+It also looks at combinations, like high sugar with high LDL cholesterol,
+
+35
+00:02:32,734 --> 00:02:35,977
+or kidney results alongside diabetes.
+
+36
+00:02:40,600 --> 00:02:44,899
+His follow-up visit and his repeat HbA1c test are overdue,
+
+37
+00:02:44,949 --> 00:02:50,898
+so the copilot prompts both, with screenings that suit his age and his diabetes.
+
+38
+00:02:50,948 --> 00:02:55,772
+Every wellness tip says why it is suggested, from his own values.
+
+39
+00:02:55,822 --> 00:02:58,321
+All of this is worked out in code,
+
+40
+00:02:58,371 --> 00:03:02,820
+and worded for a talk with the doctor, never as a diagnosis.
+
+41
+00:03:06,767 --> 00:03:12,241
+Ask Copilot answers from his own records, and shows the results it used.
+
+42
+00:03:12,291 --> 00:03:17,305
+If something isn't in the records, it says so instead of guessing.
+
+43
+00:03:17,355 --> 00:03:20,528
+And it never changes a medicine or a dose:
+
+44
+00:03:20,578 --> 00:03:23,367
+for that, it sends him to his doctor.
+
+45
+00:03:26,400 --> 00:03:27,595
+Scenario three:
+
+46
+00:03:27,645 --> 00:03:30,833
+Ravi's mother, Lakshmi, prefers Telugu.
+
+47
+00:03:30,883 --> 00:03:36,230
+She taps the microphone and asks which medicines to take tonight.
+
+48
+00:03:38,730 --> 00:03:42,230
+ఈ రాత్రి నేను ఏ మందులు వేసుకోవాలి?
+(Which medicines should I take tonight?)
+
+49
+00:03:44,650 --> 00:03:53,320
+ఈ రాత్రి మీరు ఓరోఫర్ ఎక్స్ టీ వంద మిగ్రా ఒక టాబ్లెట్ మరియు షెల్కల్ ఐదు వందల మిగ్రా ఒక టాబ్లెట్ భోజనం తర్వాత వేసుకోవాలి.
+(Tonight, take one Orofer XT 100 mg tablet and one Shelcal 500 mg tablet, after food.)
+
+50
+00:03:54,333 --> 00:04:00,038
+The answer came from her own reminder schedule, and was read aloud in Telugu.
+
+51
+00:04:00,088 --> 00:04:04,373
+Health Copilot speaks English and twelve Indian languages,
+
+52
+00:04:04,423 --> 00:04:06,541
+including right-to-left Urdu.
+
+53
+00:04:06,591 --> 00:04:09,829
+Each family member keeps their own language,
+
+54
+00:04:09,879 --> 00:04:13,043
+for the screens, chat, voice and reminders.
+
+55
+00:04:16,233 --> 00:04:18,769
+On a phone, it works like an app:
+
+56
+00:04:18,819 --> 00:04:25,273
+a bottom tab bar, the day's doses one tap away, and it installs to the home screen.
+
+57
+00:04:27,233 --> 00:04:34,118
+Under the hood, insights, reminders and the copilot's decisions are plain code,
+
+58
+00:04:34,168 --> 00:04:40,438
+so they work even when the AI is busy, on an always-on free-tier server.
+
+59
+00:04:40,488 --> 00:04:42,369
+AI reads and explains.
+
+60
+00:04:42,419 --> 00:04:43,510
+Code decides.
+
+61
+00:04:43,560 --> 00:04:45,266
+You stay in control.
+
+62
+00:04:45,316 --> 00:04:46,143
+Thank you!

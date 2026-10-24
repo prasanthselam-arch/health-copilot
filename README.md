@@ -10,7 +10,10 @@
 ![Languages](https://img.shields.io/badge/languages-English%20%2B%2012%20Indian-2ea44f)
 ![Hosting](https://img.shields.io/badge/hosting-AWS%20free%20tier-ff9900)
 
-[**Live demo**](https://healthcopilot.duckdns.org) · [**Demo video**](docs/submission/Health-Copilot-demo.mp4) · [**Full documentation**](DOCUMENT.md) · [Architecture](docs/architecture.md) · [Slides](docs/slides.pdf) · [Deck (PPTX)](docs/submission/Health-Copilot-demo.pptx) · [Demo script](docs/demo_script.md)
+[**Live demo**](https://healthcopilot.duckdns.org) · [**Demo video**](docs/submission/Health-Copilot-demo.mp4) · [**Full documentation**](DOCUMENT.md) · [Architecture](docs/architecture.md) · [Slides (PPTX)](docs/submission/Health-Copilot-demo.pptx) · [Demo script](docs/demo_script.md)
+
+<sub>The demo video is narrated in 10 languages and subtitled in all 13: choose the audio and subtitle track in VLC or
+another desktop player (browsers play the English track). Separate [subtitle files](docs/submission/subtitles).</sub>
 
 </div>
 

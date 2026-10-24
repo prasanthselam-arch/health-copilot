@@ -482,7 +482,7 @@ frontend/src/
 public/sw.js   service worker for push notifications and their Taken / Snooze buttons
 eval/          make_samples.py · samples/ (documents + ground truth) · run_eval.py · report.md · notes.md
 scripts/       seed_demo.py · e2e_smoke.py · google-apps-script/Code.gs
-docs/          architecture.md (+ PNG diagrams) · slides.md / slides.pdf · demo_script.md · screenshots/
+docs/          architecture.md (+ PNG diagrams) · demo_script.md · screenshots/ · submission/ (video, slides, subtitles)
 Dockerfile · render.yaml · .github/workflows/ (ci.yml, notify.yml) · run.sh
 ```
 
