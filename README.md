@@ -12,8 +12,10 @@
 
 [**Live demo**](https://healthcopilot.duckdns.org) · [**Demo video**](docs/submission/Health-Copilot-demo.mp4) · [**Full documentation**](DOCUMENT.md) · [Architecture](docs/architecture.md) · [Slides (PPTX)](docs/submission/Health-Copilot-demo.pptx) · [Demo script](docs/demo_script.md)
 
-<sub>The demo video is narrated in 10 languages and subtitled in all 13: choose the audio and subtitle track in VLC or
-another desktop player (browsers play the English track). Separate [subtitle files](docs/submission/subtitles).</sub>
+**Demo video in your language:** [English](docs/submission/videos/Health-Copilot-demo.en.mp4) · [हिन्दी](docs/submission/videos/Health-Copilot-demo.hi.mp4) · [বাংলা](docs/submission/videos/Health-Copilot-demo.bn.mp4) · [मराठी](docs/submission/videos/Health-Copilot-demo.mr.mp4) · [తెలుగు](docs/submission/videos/Health-Copilot-demo.te.mp4) · [தமிழ்](docs/submission/videos/Health-Copilot-demo.ta.mp4) · [ગુજરાતી](docs/submission/videos/Health-Copilot-demo.gu.mp4) · [اردو](docs/submission/videos/Health-Copilot-demo.ur.mp4) · [ಕನ್ನಡ](docs/submission/videos/Health-Copilot-demo.kn.mp4) · [മലയാളം](docs/submission/videos/Health-Copilot-demo.ml.mp4)
+
+<sub>The main video carries all 10 narrations and subtitles in all 13 languages (pick the track in VLC or another desktop
+player); the videos above have one language each. Separate [subtitle files](docs/submission/subtitles).</sub>
 
 </div>
 
