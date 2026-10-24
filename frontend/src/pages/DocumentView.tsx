@@ -80,7 +80,7 @@ export default function DocumentView() {
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{d.title || d.filename}</h1>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm text-slate-500">
               {d.doc_type && <Badge>{t(`doctype.${d.doc_type}`)}</Badge>}
-              {d.source !== 'upload' && <Badge className="bg-brand-50 text-brand-700 ring-brand-200">{t('timeline.imported')}</Badge>}
+              {d.source !== 'upload' && d.source !== 'demo' && <Badge className="bg-brand-50 text-brand-700 ring-brand-200">{t('timeline.imported')}</Badge>}
               {d.handwritten && <Badge>{t('review.handwritten')}</Badge>}
               <span>{d.document_date ? fmtDate(d.document_date, lang) : t('timeline.date_unknown')}</span>
             </div>

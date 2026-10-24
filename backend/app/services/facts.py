@@ -20,10 +20,15 @@ def _age(p: Patient) -> int | None:
     return t.year - p.birth_date.year - ((t.month, t.day) < (p.birth_date.month, p.birth_date.day))
 
 
+def num(v: float) -> float | int:
+    """171.0 -> 171, so answers and cards read like the report."""
+    return int(v) if float(v).is_integer() else v
+
+
 def obs_fact(o: Observation) -> dict[str, Any]:
     entry = labs().by_loinc.get(o.loinc or "")
     f: dict[str, Any] = {
-        "id": o.id, "test": o.name, "value": o.value_num if o.value_num is not None else o.value_text, "unit": o.unit,
+        "id": o.id, "test": o.name, "value": num(o.value_num) if o.value_num is not None else o.value_text, "unit": o.unit,
         "reference_range": o.ref_text, "range_source": o.ref_source,
         "flag": FLAG_WORDS.get(o.interpretation or "", None), "critical": o.critical,
         "date": o.effective_date.isoformat() if o.effective_date else None,

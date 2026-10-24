@@ -310,7 +310,7 @@ export default function Chat() {
               <select
                 value={voiceLang}
                 onChange={(e) => setVoiceLang(e.target.value)}
-                className="rounded border-0 bg-transparent py-0 pr-5 pl-1 text-[11px] text-slate-600 focus:ring-1 focus:ring-brand-500"
+                className="field-sizing-content cursor-pointer rounded border-0 bg-transparent py-0 pr-5 pl-1 text-[11px] text-slate-600 focus:ring-1 focus:ring-brand-500"
               >
                 {LANGUAGES.map((l) => (
                   <option key={l.code} value={l.code}>

@@ -106,7 +106,7 @@ export default function Abha() {
                 className="space-y-4"
               >
                 <label className="block">
-                  <Label hint={`${t('abha.number')} ${t('abha.or')} ${t('abha.address')}`}>{t('abha.number')}</Label>
+                  <Label>{`${t('abha.number')} ${t('abha.or')} ${t('abha.address')}`}</Label>
                   <Input value={id} onChange={(e) => setId(formatAbha(e.target.value))} placeholder="91-1234-5678-9012  /  name@abdm" />
                 </label>
                 {init.error && <ErrorNote error={init.error} />}

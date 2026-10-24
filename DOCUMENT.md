@@ -120,6 +120,9 @@ flowchart LR
 
 - **Models:** each role (extract, verify, fast) has a fallback chain of models. The first available one wins, and
   quota or overload errors move to the next. Verification deliberately starts on a different model from extraction.
+  If a model is still reading after 25 s, the next model in the chain races it and the first answer wins.
+- **When the second read runs:** always for handwritten or unclear pages and whenever the code checks flag something.
+  A clearly printed page that passes every check skips it, which saves 20-40 s (`VERIFY_CLEAN_PRINTS=true` keeps it).
 - **Deterministic decisions:** High, Low and Critical flags, unit conversions, LOINC and ICD-10 codes and medicine
   schedules are computed in code from a curated knowledge base (60 lab tests, 213 Indian drug brands, dosage terms).
   The models read the page and write prose; they never decide what is abnormal.

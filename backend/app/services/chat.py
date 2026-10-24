@@ -36,7 +36,9 @@ CHAT_SYSTEM = """You are a careful personal health copilot. You answer questions
 RECORDS (JSON) are provided; every record has an `id`.
 Rules:
 - Answer from the records first and cite the ids you used: the id of every individual result, medicine and condition
-  you mention, not only the document. Quote values and dates exactly as in the records.
+  you mention, not only the document, in cited_record_ids. Never write ids in the answer text.
+- Keep values exactly as in the records, without quote marks. Write dates as people say them ("11 Jul 2026",
+  "July 2026"), never as 2026-07-11.
 - If the records do not contain the answer, say so plainly. You may add brief, well-established general health information, clearly labelled as general information.
 - Never diagnose. Never tell the user to start, stop, skip or change a medicine or dose; for such questions explain what the record says and advise asking their doctor.
 - For worrying symptoms, advise contacting a doctor; for emergency symptoms, advise calling 112.
@@ -122,7 +124,7 @@ def _label_index(db: Session, patient: Patient) -> dict[str, dict[str, Any]]:
     for d in db.exec(select(Document).where(Document.patient_id == patient.id)).all():
         idx[d.id] = {"kind": "document", "label": d.title or d.doc_type, "date": d.document_date, "document_id": d.id}
     for o in db.exec(select(Observation).where(Observation.patient_id == patient.id)).all():
-        idx[o.id] = {"kind": "result", "label": f"{o.name}: {o.value_num if o.value_num is not None else o.value_text} {o.unit or ''}".strip(),
+        idx[o.id] = {"kind": "result", "label": f"{o.name}: {F.num(o.value_num) if o.value_num is not None else o.value_text} {o.unit or ''}".strip(),
                      "date": o.effective_date, "document_id": o.document_id}
     for m in db.exec(select(MedicationRequest).where(MedicationRequest.patient_id == patient.id)).all():
         idx[m.id] = {"kind": "medication", "label": f"{m.name} {m.strength or ''}".strip(), "date": m.authored_on, "document_id": m.document_id}
@@ -150,7 +152,7 @@ def ask(db: Session, patient: Patient, message: str, history: list[dict[str, str
         if fallback is None:
             raise
         return fallback
-    text = _RAW_IDS.sub("", r.answer).strip()
+    text = tidy(r.answer, lang)
     safety = check_text(text)
     answer = text if safety.passed else redact(text)
     reply_lang = reply_language(answer, r.reply_language)
@@ -178,8 +180,22 @@ def ask(db: Session, patient: Patient, message: str, history: list[dict[str, str
     }
 
 
-# Record ids the model sometimes writes into the prose ("[3a3ddba0-…, …]"); the app shows citations as cards instead.
-_RAW_IDS = re.compile(r"\s*[\[(](?:\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*,?)+[\])]", re.I)
+# Record ids the model sometimes writes into the prose ("[3a3ddba0-…, …]", "(id: 3a3ddba0-…)"); the app shows
+# citations as cards instead.
+_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+_RAW_IDS = re.compile(rf"\s*[\[(]\s*(?:(?:record\s+)?ids?\s*[:=]\s*)?{_UUID}(?:\s*,\s*{_UUID})*\s*[\])]|\s*\b(?:id\s*[:=]\s*)?{_UUID}\b", re.I)
+_ISO_DATE = re.compile(r"[\"“”']?\b(20\d\d|19\d\d)-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b[\"“”']?")
+_QUOTED_VALUE = re.compile(r"[\"“”](\d[\d.,]*\s*[^\s\"“”]{0,12})[\"“”]")
+_TRAILING_ZERO = re.compile(r"(?<![\d.])(\d+)\.0(?![\d])")
+_MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+
+
+def tidy(text: str, lang: str = "en") -> str:
+    """Make model prose read like a person wrote it: no record ids, '11 Jul 2026' not '"2026-07-11"', '171' not '171.0'."""
+    text = _RAW_IDS.sub("", text)
+    text = _ISO_DATE.sub(lambda m: f"{int(m[3])} {_MONTHS[int(m[2]) - 1]} {m[1]}" if lang == "en" else f"{m[3]}/{m[2]}/{m[1]}", text)
+    text = _QUOTED_VALUE.sub(r"\1", text)
+    return _TRAILING_ZERO.sub(r"\1", text).strip()
 
 
 def _quick_answer(db: Session, patient: Patient, message: str, lang: str) -> dict[str, Any] | None:

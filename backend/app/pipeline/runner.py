@@ -125,7 +125,10 @@ def process_document(doc_id: str) -> None:
 
             final, vr = first, None
             extra_issues: list[Issue] = []
-            if s.enable_verification:
+            clean = not cls.handwritten and getattr(cls.legibility, "value", cls.legibility) == "good" and not hints
+            if s.enable_verification and clean and not s.verify_clean_prints:
+                record("verifying", time.perf_counter(), note="skipped: clearly printed and passed every check")
+            elif s.enable_verification:
                 step("verifying", 65)
                 t0 = time.perf_counter()
                 try:

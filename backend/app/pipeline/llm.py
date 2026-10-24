@@ -59,6 +59,8 @@ _last_ok: dict[str, str] = {}
 OVERLOAD_COOLDOWN_S = 45
 INTERACTIVE_TIMEOUT_MS = 20_000
 HEDGE_AFTER_S = 5
+# Reading a document normally takes 10-25 s; a model still busy after this gets a second model racing it.
+BACKGROUND_HEDGE_S = 25
 
 
 def _cooldown_s(msg: str) -> float:
@@ -182,6 +184,8 @@ def parse(role: str, system: str, parts: list[Part] | str, schema: type[T], atte
     ready = [m for m in chain if _cooling.get(m, 0) <= now] or chain
     if interactive:
         return _hedged(role, ready, lambda m: call(m, system, parts, schema, thinking, INTERACTIVE_TIMEOUT_MS), schema)
+    if role in ("extract", "verify"):
+        return _hedged(role, ready, lambda m: call(m, system, parts, schema, thinking), schema, BACKGROUND_HEDGE_S)
     for model in ready:
         for attempt in range(attempts_per_model):
             try:
@@ -208,9 +212,10 @@ def parse(role: str, system: str, parts: list[Part] | str, schema: type[T], atte
     raise LLMUnavailable("All models failed: " + " | ".join(errors[-4:]))
 
 
-def _hedged(role: str, models: list[str], run: Callable[[str], LLMResult], schema: type[BaseModel]) -> LLMResult:
-    """For someone waiting: one try per model, the next model starts at once when one fails, and also when one is
-    slow (after HEDGE_AFTER_S), with at most two in flight. The first answer wins."""
+def _hedged(role: str, models: list[str], run: Callable[[str], LLMResult], schema: type[BaseModel],
+            hedge_after: float = HEDGE_AFTER_S) -> LLMResult:
+    """One try per model: the next model starts at once when one fails, and also when one is slow (after
+    `hedge_after` seconds), with at most two in flight. The first answer wins."""
     queue = list(models)
     pending: dict[Future[LLMResult], str] = {}
     errors: list[str] = []
@@ -224,7 +229,7 @@ def _hedged(role: str, models: list[str], run: Callable[[str], LLMResult], schem
     launch()
     try:
         while pending:
-            done, _ = wait(pending, timeout=HEDGE_AFTER_S, return_when=FIRST_COMPLETED)
+            done, _ = wait(pending, timeout=hedge_after, return_when=FIRST_COMPLETED)
             if not done:
                 launch()
                 continue

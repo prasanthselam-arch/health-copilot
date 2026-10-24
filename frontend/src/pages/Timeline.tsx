@@ -107,7 +107,7 @@ function Event({ e, lang }: { e: TimelineEvent; lang: ReturnType<typeof useLang>
               <p className="text-sm text-slate-500">{[t(`doctype.${e.type}`), e.facility, e.author].filter(Boolean).join(' · ')}</p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              {e.source !== 'upload' && (
+              {e.source !== 'upload' && e.source !== 'demo' && (
                 <Badge className="bg-brand-50 text-brand-700 ring-brand-200">
                   <ShieldCheck className="h-3 w-3" />
                   {t('timeline.imported')}

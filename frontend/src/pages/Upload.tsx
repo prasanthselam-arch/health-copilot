@@ -173,7 +173,7 @@ function UploadRow({
 }) {
   const { t } = useTranslation()
   const lang = useLang()
-  const Icon = d.mime_type === 'application/pdf' ? FileText : FileImage
+  const Icon = d.mime_type.startsWith('image/') ? FileImage : FileText
   const timing = d.pipeline_log
     .filter((l) => l.model)
     .map((l) => `${t(`upload.stage.${l.stage}`, { defaultValue: l.stage })} ${((l.ms ?? 0) / 1000).toFixed(1)}s`)
@@ -233,16 +233,18 @@ function UploadRow({
           </Button>
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-4">
-        <div className="flex-1">
-          <PipelineSteps stage={d.stage} status={d.status} />
+      {d.status !== 'confirmed' && (
+        <div className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4">
+          <div className="flex-1">
+            <PipelineSteps stage={d.stage} status={d.status} />
+          </div>
+          <div className="shrink-0 sm:w-56 sm:text-right">
+            <StageLabel stage={d.stage} status={d.status} />
+          </div>
         </div>
-        <div className="w-56 shrink-0 text-right">
-          <StageLabel stage={d.stage} status={d.status} />
-        </div>
-      </div>
+      )}
       {d.status === 'failed' && d.error && <p className="mt-2 text-xs text-red-600">{t('upload.failed')}: {d.error.slice(0, 200)}</p>}
-      {timing && d.status !== 'processing' && <p className="mt-1.5 text-xs text-slate-400">{timing}</p>}
+      {timing && d.status === 'review' && <p className="mt-1.5 text-xs text-slate-400">{timing}</p>}
     </li>
   )
 }

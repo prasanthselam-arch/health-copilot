@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     gemini_tts_voice: str = "Kore"
     openai_reasoning_effort: str = "low"
     enable_verification: bool = True
+    # A clearly printed page that passes every check skips the second read; handwritten, unclear or flagged pages never do.
+    verify_clean_prints: bool = False
 
     def models_for(self, role: str) -> list[str]:
         chain = getattr(self, f"{self.llm_provider}_{role}_models")

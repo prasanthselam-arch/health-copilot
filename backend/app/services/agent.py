@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlmodel import Session, col, select
 
-from app.models.tables import Appointment, CopilotAction, Document, MedicationRequest, Patient, Reminder
+from app.models.tables import Appointment, Condition, CopilotAction, Document, MedicationRequest, Patient, Reminder
 from app.services import care, reminders
 from app.services.reminders import now_ist
 
@@ -83,7 +83,7 @@ def after_confirm(db: Session, doc: Document) -> list[CopilotAction]:
             detail=f"The record says \u201c{f['source_text']}\u201d.",
             items=[{"label": f["title"], "detail": f"{f['due_date']:%d %b %Y}", "ref": a.id}], ref_ids=[a.id], document_id=doc.id))
     db.flush()
-    q = draft_questions(db, patient)
+    q = draft_questions(db, patient, doc=doc)
     if q:
         for old in db.exec(select(CopilotAction).where(CopilotAction.patient_id == patient.id, CopilotAction.kind == "questions",
                                                        col(CopilotAction.status).in_(["done", "kept"]))).all():
@@ -91,7 +91,7 @@ def after_confirm(db: Session, doc: Document) -> list[CopilotAction]:
             db.add(old)
         actions.append(_log(
             db, patient.id, f"questions:{doc.id}", "questions", f"Drafted {len(q)} questions for your next doctor visit",
-            detail="Based on your latest results and trends. Edit them, then print them with your visit sheet.",
+            detail=f"Based on {source} and your latest results. Edit them, then print them with your visit sheet.",
             items=[{"label": x} for x in q], document_id=doc.id))
     actions.extend(sweep(db, patient, commit=False))
     db.commit()
@@ -134,13 +134,43 @@ def sweep(db: Session, patient: Patient, today: date | None = None, commit: bool
     return [a for a in out if a]
 
 
-def draft_questions(db: Session, patient: Patient, limit: int = 3) -> list[str]:
+# Long-term conditions a doctor sets a target or a re-test for; acute illnesses get no such question.
+CONDITION_QUESTIONS = (
+    (("diabet",), "What HbA1c and fasting sugar should I aim for, and how often should I check my sugar at home?"),
+    (("hypertens", "blood pressure"), "What blood pressure should I aim for at home, and how often should I check it?"),
+    (("thyroid",), "When should I repeat my thyroid test to check the dose is right?"),
+    (("cholesterol", "lipid"), "What LDL cholesterol should I aim for?"),
+    (("anaemia", "anemia"), "When should I repeat my haemoglobin test to see if the treatment is working?"),
+)
+
+
+def _from_document(db: Session, doc: Document) -> list[str]:
+    """Questions about what this record says: its long-term conditions and the medicines it prescribes."""
+    qs: list[str] = []
+    by = f"Dr. {doc.author.removeprefix('Dr.').removeprefix('Dr').strip()}" if doc.author else "The doctor"
+    for c in db.exec(select(Condition).where(Condition.document_id == doc.id, Condition.clinical_status == "active")).all():
+        q = next((q for words, q in CONDITION_QUESTIONS if any(w in c.name.lower() for w in words)), None)
+        if q:
+            qs.append(f"{by} noted {c.name}. {q}")
+            break
+    meds = [m for m in db.exec(select(MedicationRequest).where(MedicationRequest.document_id == doc.id)).all()
+            if m.frequency_code not in reminders.NO_REMINDER]
+    if meds:
+        names = [" ".join(x for x in (m.name, m.strength) if x) for m in meds[:3]]
+        names_text = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+        long_course = any(not m.duration_days or m.duration_days >= 28 for m in meds)
+        qs.append(f"For {names_text}: which side effects should I watch for, and "
+                  + ("how long will I need to take them?" if long_course else "what should I do if I miss a dose?"))
+    return qs
+
+
+def draft_questions(db: Session, patient: Patient, limit: int = 3, doc: Document | None = None) -> list[str]:
     """Up to three grounded questions for the next visit, most important first."""
     prof = care.build_profile(db, patient)
-    qs: list[str] = []
-    for i in care.insights(prof):
-        if i.get("question") and i["level"] != "good":
-            qs.append(i["question"])
+    qs: list[str] = [i["question"] for i in care.insights(prof) if i.get("question") and i["level"] != "good"]
+    if doc and doc.doc_type in ("prescription", "discharge_summary"):
+        asks_target = any("target" in q for q in qs[:1])
+        qs[1:1] = [q for q in _from_document(db, doc) if not (asks_target and "aim for" in q)]
     today = now_ist().date()
     appts = list(db.exec(select(Appointment).where(Appointment.patient_id == patient.id)).all())
     for item in care.preventive(prof, appts, today):

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClock, BellRing, Bot, Check, CheckCircle2, Clock, FileText, Moon, SkipForward, Sun, Sunset, Undo2, X } from 'lucide-react'
+import { AlarmClock, BellOff, BellRing, Bot, Check, CheckCircle2, Clock, FileText, Moon, SkipForward, Sun, Sunset, Undo2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
@@ -101,21 +101,29 @@ export function DoseActions({ d, size = 'sm' }: { d: Dose; size?: 'sm' | 'md' })
 export function DoseRow({ d, showPatient }: { d: Dose; showPatient?: boolean }) {
   const { t } = useTranslation()
   const Icon = SLOT_ICON[d.slot] ?? Clock
+  const done = d.status === 'taken' || d.status === 'skipped'
   return (
-    <li className={cn('flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5', d.status === 'due' && 'bg-amber-50/60 dark:bg-amber-500/10')}>
-      <div className="flex w-16 shrink-0 items-center gap-1.5 font-semibold tabular-nums text-slate-900">
-        <Icon className="h-4 w-4 text-brand-600" />
+    <li
+      className={cn(
+        'grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 sm:grid-cols-[4rem_minmax(0,1fr)_auto_auto] sm:items-center sm:px-5',
+        d.status === 'due' && 'bg-amber-50/60 dark:bg-amber-500/10',
+      )}
+    >
+      <div className="flex items-center gap-1.5 pt-0.5 font-semibold tabular-nums text-slate-900 sm:pt-0">
+        <Icon className="hidden h-4 w-4 text-brand-600 sm:block" />
         {d.time}
       </div>
-      <div className="min-w-0 flex-[1_1_12rem]">
-        <p className={cn('font-medium text-slate-900', (d.status === 'taken' || d.status === 'skipped') && 'text-slate-500 line-through decoration-slate-300')}>{d.title}</p>
-        <p className="text-sm text-slate-500">
-          {[d.amount, d.detail && t(`rem.meal.${d.detail}`, { defaultValue: d.detail })].filter(Boolean).join(' · ')}
-          {showPatient && <span className="ml-1.5 rounded-md bg-brand-50 px-1.5 py-0.5 text-xs font-medium text-brand-800">{d.patient_name.split(' ')[0]}</span>}
+      <div className="min-w-0">
+        <p className={cn('truncate font-medium text-slate-900', done && 'text-slate-500 line-through decoration-slate-300')}>{d.title}</p>
+        <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-slate-500">
+          <span>{[d.amount, d.detail && t(`rem.meal.${d.detail}`, { defaultValue: d.detail })].filter(Boolean).join(' · ')}</span>
+          {showPatient && <span className="rounded-md bg-brand-50 px-1.5 py-0.5 text-xs font-medium text-brand-800">{d.patient_name.split(' ')[0]}</span>}
         </p>
       </div>
-      <DoseStatusBadge d={d} />
-      <DoseActions d={d} />
+      <div className="justify-self-end">{d.status !== 'pending' && <DoseStatusBadge d={d} />}</div>
+      <div className="col-span-2 col-start-2 sm:col-span-1 sm:col-start-auto sm:justify-self-end">
+        <DoseActions d={d} />
+      </div>
     </li>
   )
 }
@@ -171,9 +179,13 @@ export function PushToggle({ compact }: { compact?: boolean }) {
     pushState().then(setState)
   }, [])
   if (state === null) return null
-  if (state === 'unsupported')
-    return compact ? null : <p className="text-sm text-slate-500">{t('rem.push_unsupported')}</p>
-  if (state === 'denied') return <p className="text-sm text-slate-500">{t('rem.push_denied')}</p>
+  if (state === 'unsupported' || state === 'denied')
+    return compact ? null : (
+      <p className="flex items-start gap-1.5 text-xs text-slate-500">
+        <BellOff className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        {t(state === 'denied' ? 'rem.push_denied' : 'rem.push_unsupported')}
+      </p>
+    )
   const toggle = async () => {
     setBusy(true)
     try {

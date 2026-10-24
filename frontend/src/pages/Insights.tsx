@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Apple, BedDouble, CalendarClock, Footprints, HeartPulse, Info, ListChecks, Sparkles, Stethoscope, TrendingDown, TrendingUp } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { Activity, Apple, BedDouble, CalendarClock, ChevronDown, Footprints, HeartPulse, Info, ListChecks, Sparkles, Stethoscope, TrendingDown, TrendingUp } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { EvidenceChips, LEVEL_TONE, LevelBadge } from '@/components/care'
@@ -11,6 +11,8 @@ import { useActivePatient, useLang } from '@/lib/patient'
 import type { Insight, PreventiveItem, WellnessTip } from '@/lib/types'
 import { cn, fmtDate } from '@/lib/utils'
 
+const SHOWN = 4
+
 const CATEGORY_ICON = { diet: Apple, activity: Footprints, sleep: BedDouble, habits: HeartPulse, monitoring: Activity } as const
 
 export default function Insights() {
@@ -18,6 +20,7 @@ export default function Insights() {
   const lang = useLang()
   const patient = useActivePatient()
   const q = useQuery({ queryKey: ['care', patient.id, lang], queryFn: () => api.care(patient.id, lang), staleTime: 60_000 })
+  const [showAll, setShowAll] = useState(false)
 
   if (q.isLoading) return <Spinner label={t('care.loading')} />
   if (q.error) return <ErrorNote error={q.error} onRetry={() => q.refetch()} />
@@ -42,10 +45,10 @@ export default function Insights() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className={cn('grid gap-3', good.length ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-3')}>
         <Stat tone="from-rose-300 to-rose-500" label={t('care.stat_attention')} value={attention.length} />
         <Stat tone="from-amber-300 to-orange-500" label={t('care.stat_due')} value={due.length} />
-        <Stat tone="from-emerald-300 to-emerald-600" label={t('care.stat_improving')} value={good.length} />
+        {good.length > 0 && <Stat tone="from-emerald-300 to-emerald-600" label={t('care.stat_improving')} value={good.length} />}
         <Stat
           tone="from-sky-300 to-indigo-500"
           label={t('care.stat_adherence')}
@@ -70,10 +73,16 @@ export default function Insights() {
               </Card>
             ) : (
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                {attention.map((i) => (
+                {(showAll ? attention : attention.slice(0, SHOWN)).map((i) => (
                   <InsightCard key={i.key} i={i} />
                 ))}
               </div>
+            )}
+            {attention.length > SHOWN && (
+              <Button variant="ghost" size="sm" onClick={() => setShowAll((v) => !v)}>
+                <ChevronDown className={cn('h-4 w-4 transition-transform', showAll && 'rotate-180')} />
+                {showAll ? t('chat.show_less') : t('chat.show_more', { count: attention.length - SHOWN })}
+              </Button>
             )}
             {good.length > 0 && (
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -130,7 +139,6 @@ function SectionTitle({ icon, title, sub }: { icon: ReactNode; title: string; su
 }
 
 export function InsightCard({ i }: { i: Insight }) {
-  const { t } = useTranslation()
   const Icon = i.level === 'good' ? TrendingDown : i.kind === 'combination' ? Stethoscope : TrendingUp
   return (
     <div className={cn('rounded-2xl p-4 ring-1', LEVEL_TONE[i.level])}>
@@ -149,7 +157,6 @@ export function InsightCard({ i }: { i: Insight }) {
               {i.next_step}
             </p>
           )}
-          {i.question && <p className="mt-1.5 text-xs text-slate-500">{t('care.ask_doctor')}: “{i.question}”</p>}
         </div>
       </div>
     </div>

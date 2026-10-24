@@ -176,7 +176,8 @@ def _series_insights(prof: Profile) -> list[dict[str, Any]]:
                     f"{name} was {direction} the usual range in your last {len(run)} reports{moving}: {journey}.",
                     run[-4:], key,
                     next_step=f"Show these {name} results to your doctor at your next visit and ask whether your plan needs a review.",
-                    question=f"My {name} has been {direction} range in my last {len(run)} reports ({journey}). What should my target be, and does my plan need to change?",
+                    question=f"My {name} has been {direction} range in my last {len(run)} reports ({' → '.join(_v(o) for o in run[-4:])}). "
+                             "What should my target be, and does my plan need to change?",
                 ))
             elif (bad_up and pct >= 5) or (bad_down and pct <= -5):
                 out.append(_insight(
