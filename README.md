@@ -26,7 +26,7 @@ reports and prompts the overdue HbA1c, and drafts the questions for the next vis
 can be kept, edited or undone. Insights, preventive steps and a wellness plan come from each person's own results, and
 everything works in English and 12 Indian languages, by voice too.
 
-*Built for the Altrix Labs hackathon "AI-Powered Personal Health Copilot" (Round 2: the engagement layer).*
+*Built for the Altrix Labs hackathon "AI-Powered Personal Health Copilot".*
 
 **Try it:** [healthcopilot.duckdns.org](https://healthcopilot.duckdns.org), sign in as `demo@healthcopilot.in` / `demo12345`.
 

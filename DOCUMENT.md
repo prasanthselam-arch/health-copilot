@@ -89,6 +89,8 @@ extend Health Copilot.
     the turn about a second after they stop (the recording fallback adapts its threshold to the room's noise);
   - spoken questions get a short spoken-style answer (1-3 sentences, no tables) with minimal model thinking, and the
     answer is read aloud automatically;
+  - under the microphone, the *Speak replies* switch reads every answer aloud (typed questions too), and the *Voice
+    language* menu beside it picks the language the microphone listens in;
   - chat, voice and translation calls never wait on a struggling model: each model gets one try, a slow one is raced
     by the next after 5 seconds, the first answer wins, and overloaded models are skipped for a while;
   - server read-aloud starts with the first sentence while the rest is generated;
@@ -243,7 +245,7 @@ copilot check and the email job at 9 AM IST. On Render, which sleeps, the GitHub
 
 ## 5. Demo data and maintenance commands
 
-The Round 2 demo family (no LLM calls) shows every feature on realistic records:
+The demo family (no LLM calls) shows every feature on realistic records:
 
 ```bash
 cd backend && .venv/bin/python -m app.demo          # resets the demo account demo@healthcopilot.in / demo12345
@@ -260,7 +262,7 @@ docker exec health-copilot python -m app.demo       # the same on the server
 A week of dose history (with a few missed doses) gives the adherence figures. It uses the same confirm path as real
 uploads, so the reminders, appointments and copilot actions are created by the agent itself.
 
-The original Round 1 demo is still available. To load a demo account (`demo@healthcopilot.in`, password `demo12345`) with a patient, an ABHA link and a year of
+An older single-patient demo is still available. To load a demo account (`demo@healthcopilot.in`, password `demo12345`) with a patient, an ABHA link and a year of
 records (no LLM calls needed), against a local backend:
 
 ```bash
@@ -470,7 +472,7 @@ backend/app/
                auth · contact · codes (email codes) · mailer · notifications · datastore (GitHub data sync)
   api/         auth · patients · documents · insights (summary, chat, ABHA) · care (reminders, insights, copilot, push)
                voice · internal (daily job)
-  demo.py      the Round 2 demo family (python -m app.demo)
+  demo.py      the demo family (python -m app.demo)
   models/      SQLModel tables shaped like FHIR resources, plus accounts, sessions, codes and notifications
 frontend/src/
   pages/       Auth · Onboarding · Dashboard · Upload · Review · DocumentView · Timeline · Trends · Medications · Chat · Abha · Profiles (family) · Account

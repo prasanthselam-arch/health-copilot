@@ -94,7 +94,7 @@ export default function Chat() {
     onSuccess: (reply, { voice }) => {
       const at = Date.now()
       setMessages((m) => [...m, { role: 'assistant', content: reply.answer, reply, at }])
-      // A spoken question gets a spoken answer, even outside audio mode.
+      // A spoken question gets a spoken answer, even with Speak replies off.
       if (audioModeRef.current || voice)
         void speak(`msg-${at}`, markdownToText(reply.answer), reply.reply_language || lang, () => {
           // Hands-free: after reading the answer to a spoken question, listen for the next one.
@@ -152,23 +152,6 @@ export default function Chat() {
           <p className="mt-1 hidden text-slate-500 sm:block">{t('chat.subtitle')}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={audioMode}
-            onClick={() => setAudioMode((v) => !v)}
-            title={t('chat.audio_mode_hint')}
-            className={cn(
-              'inline-flex h-8 items-center gap-2 rounded-lg px-3 text-sm font-medium ring-1 transition-colors',
-              audioMode ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50',
-            )}
-          >
-            <Headphones className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('chat.audio_mode')}</span>
-            <span className={cn('relative h-4 w-7 rounded-full transition-colors', audioMode ? 'bg-white/30' : 'bg-slate-200')}>
-              <span className={cn('absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all', audioMode ? 'left-3.5' : 'left-0.5')} />
-            </span>
-          </button>
           {messages.length > 0 && (
             <Button variant="secondary" size="sm" onClick={newChat} title={t('chat.new_chat')}>
               <SquarePen className="h-4 w-4" />
@@ -295,11 +278,28 @@ export default function Chat() {
               <span className="sr-only">{t('chat.send')}</span>
             </button>
           </div>
-          <div className="mx-auto mt-1.5 flex max-w-3xl items-center justify-between gap-3 px-2 text-[11px] text-slate-400">
+          <div className="mx-auto mt-1.5 flex max-w-3xl items-center gap-3 px-1.5 text-[11px] text-slate-400">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={audioMode}
+              onClick={() => setAudioMode((v) => !v)}
+              title={t('chat.audio_mode_hint')}
+              className={cn(
+                'inline-flex items-center gap-1 whitespace-nowrap rounded px-1 py-0.5 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-brand-500',
+                audioMode ? 'font-medium text-brand-700' : 'text-slate-500 hover:text-slate-700',
+              )}
+            >
+              <Headphones className="h-3 w-3" />
+              {t('chat.audio_mode')}
+              <span className={cn('relative ml-0.5 h-3 w-5 rounded-full transition-colors', audioMode ? 'bg-brand-600' : 'bg-slate-300')}>
+                <span className={cn('absolute top-0.5 h-2 w-2 rounded-full bg-white shadow transition-all', audioMode ? 'left-2.5' : 'left-0.5')} />
+              </span>
+            </button>
             <span className="hidden sm:inline">{t('chat.enter_hint')}</span>
-            <label className="ml-auto inline-flex items-center gap-1">
+            <label className="ml-auto inline-flex items-center gap-1 whitespace-nowrap">
               <Languages className="h-3 w-3" />
-              {t('chat.voice_lang')}
+              <span className="hidden sm:inline">{t('chat.voice_lang')}</span>
               <select
                 value={voiceLang}
                 onChange={(e) => setVoiceLang(e.target.value)}

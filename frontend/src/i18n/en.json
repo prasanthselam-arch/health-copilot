@@ -362,7 +362,7 @@
     "view_trend": "See trend",
     "show_more": "Show {{count}} more",
     "show_less": "Show less",
-    "audio_mode": "Audio mode",
+    "audio_mode": "Speak replies",
     "audio_mode_hint": "Read every reply aloud, and send spoken questions straight away",
     "mic_start": "Speak your question",
     "mic_stop": "Stop listening",
